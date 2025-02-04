@@ -37,6 +37,30 @@ LEARNING_RATE = 1e-2
 
 # %%
 
+def plot_losses(train_losses, test_losses, train_cop, test_cop, title: str = "Cox") -> None:
+    x = np.linspace(1, len(train_losses), len(train_losses))
+    
+    train_losses = torch.stack(train_losses) / train_losses[0]
+    test_losses = torch.stack(test_losses) / test_losses[0]
+    
+    train_cop = torch.stack(train_cop) / train_cop[0]
+    test_cop = torch.stack(test_cop) / test_cop[0]
+    
+    plt.scatter(x, train_losses, label="training", color = 'C0')
+    plt.scatter(x, test_losses, label="test", color = 'C1', s = 20)
+    #plt.plot(train_losses, label="training", color = 'C0')
+    #plt.plot(test_losses, label="test", color = 'C1')
+    #plt.plot(train_cop, '--', color = 'C0')
+    #plt.plot(test_cop, '--', color = 'C1')
+    plt.legend()
+    plt.xlabel("Epochs")
+    plt.ylabel("Normalized loss")
+    plt.title(title)
+    plt.yscale("log")
+    plt.show()
+
+# %%
+
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT"
 
 features = ['BM_BLAST', 'HB', 'PLT']
@@ -87,15 +111,6 @@ class DatasetGen(Dataset):
         if self.status_transform:
             status = self.status_transform(status)
         return info_clinical, (bool(status[0]), status[1])
-    
-    def get_data(self):
-        temp_list = []
-        
-        for i in range(len(self.patient_status)):
-            temp_val = self.__getitem__(i)
-            temp_list += [temp_val]
-            
-        return temp_list
 
 # %%
 
@@ -106,9 +121,14 @@ train_data, val_data, test_data = torch.utils.data.random_split(complete_data, [
 
 dataloader_train = DataLoader(train_data, batch_size = BATCH_SIZE)
 dataloader_val = DataLoader(val_data, batch_size = BATCH_SIZE)
-dataloader_test = DataLoader(test_data, batch_size = 317)
+dataloader_test = DataLoader(test_data, batch_size = BATCH_SIZE)
 
-train_data_val = train_data.dataset.get_data()
+train_event = torch.tensor([val[1][0] for val in train_data]).bool()
+train_time = torch.tensor([val[1][1] for val in train_data]).float()
+
+test_x = torch.tensor([np.array(val[0]) for val in test_data])
+test_event = torch.tensor([val[1][0] for val in test_data])
+test_time = torch.tensor([val[1][1] for val in test_data])
 
 # %%
 
@@ -136,24 +156,35 @@ cox_model = torch.nn.Sequential(
 
 # %%
 
+cox_model = torch.nn.Sequential(
+    torch.nn.BatchNorm1d(num_features),
+    torch.nn.Linear(3, 12),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(12, 4),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(4, 1)
+)
+
+# %%
+
 LEARNING_RATE = 1e-2
-EPOCHS = 50
+EPOCHS = 20
 optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 con = ConcordanceIndex()
 
 # %%
 
-train_event = torch.tensor([val[1][0] for val in train_data_val]).bool()
-train_time = torch.tensor([val[1][1] for val in train_data_val]).float()
-
-#weight_ipcw = get_ipcw(train_event, train_time)
-
-# %%
-
 def train_loop(dataloader, model, optimizer):
     model.train()
-
+    
+    batch_num = len(dataloader)
+    curr_con_ind = torch.tensor(0.0)
+    curr_con_ind_ipcw = torch.tensor(0.0)
     curr_loss = torch.tensor(0.0)
+    num_el = torch.tensor(len(train_event))
+    
     for i, batch in enumerate(dataloader):
         x, (event, time) = batch
         optimizer.zero_grad()
@@ -163,126 +194,131 @@ def train_loop(dataloader, model, optimizer):
         loss.backward()
         optimizer.step()
         curr_loss += loss.detach()
-
-    return curr_loss
+        
+        con = ConcordanceIndex()
+        con_ind = con(log_hz, event, time)
+        curr_con_ind += con_ind
+        
+        con = ConcordanceIndex()
+        try:
+            weight_ipcw = get_ipcw(train_event, train_time, torch.tensor([val[0] for val in log_hz]).float())
+        except:
+            curr_con_ind_ipcw += 0
+            print('ERROR FOR IPCW WEIGHTS IN TRAIN LOOP')
+        else:
+            con_ind_ipcw = con(log_hz.float(), event, time.float(), weight = weight_ipcw)
+            curr_con_ind_ipcw += con_ind_ipcw
             
-def test_loop(dataloader, model):
-    batch_num = len(dataloader)
-    test_con_ind = 0
-    test_con_ind_ipcw = 0
+    curr_loss /= batch_num
+    curr_con_ind /= batch_num
+    curr_con_ind_ipcw /= batch_num
+    return curr_loss, curr_con_ind, curr_con_ind_ipcw
+
+def test_loop(model):
     model.eval()
+    
+    curr_con_ind = torch.tensor(0.0)
+    curr_con_ind_ipcw = torch.tensor(0.0)
+    curr_loss = torch.tensor(0.0)
+    
+    x, event, time = test_x, test_event, test_time
+    #num_el = torch.tensor(len(x))
+    
+    with torch.no_grad():
+        pred = cox_model(x)
+        
+        loss = neg_partial_log_likelihood(pred, event, time, reduction="mean")
+        curr_loss += loss.detach()
+        
+        con = ConcordanceIndex()
+        con_ind = con(pred, event, time)
+        curr_con_ind += con_ind
+        
+        con = ConcordanceIndex()
+        try:
+            weight_ipcw = get_ipcw(train_event, train_time, torch.tensor([val[0] for val in pred]).float())
+        except:
+            curr_con_ind_ipcw += 0
+            print('ERROR FOR IPCW WEIGHTS IN TEST LOOP')
+        else:
+            con_ind_ipcw = con(pred.float(), event, time.float(), weight = weight_ipcw)
+            curr_con_ind_ipcw += con_ind_ipcw
+    
+    #curr_loss /= num_el
+    #curr_con_ind /= batch_num
+    #curr_con_ind_ipcw /= batch_num
+    return curr_loss, curr_con_ind, curr_con_ind_ipcw
+
+# %%
+
+train_losses = []
+test_losses = []
+
+train_con_inds = []
+test_con_inds = []
+
+train_con_ind_ipcws = []
+test_con_ind_ipcws = []
+
+for t in range(EPOCHS):
+    curr_train_loss, curr_train_con_ind, curr_train_con_ind_ipcw = train_loop(dataloader_train, cox_model, optimizer)
+    curr_test_loss, curr_test_con_ind, curr_test_con_ind_ipcw = test_loop(cox_model)
+    
+    train_losses.append(curr_train_loss)
+    test_losses.append(curr_test_loss)
+    
+    train_con_inds.append(curr_train_con_ind)
+    test_con_inds.append(curr_test_con_ind)
+    
+    train_con_ind_ipcws.append(curr_train_con_ind_ipcw)
+    test_con_ind_ipcws.append(curr_test_con_ind_ipcw)
+    
+    if t % (EPOCHS // 5) == 0:
+        print(f"Epoch {t+1}\n-------------------------------")
+        print(f"Training loss: {curr_train_loss:0.3f}, Test loss: {curr_test_loss:0.3f},\nConcordance Index train: {curr_train_con_ind:0.3f}, IPCW Concordance Index train: {curr_train_con_ind_ipcw:0.3f},\nConcordance Index test:  {curr_test_con_ind:0.3f}, IPCW Concordance Index test:  {curr_test_con_ind_ipcw:0.3f}")
+print("Done!")
+
+# %%
+
+plot_losses(train_losses, test_losses, train_con_ind_ipcws, test_con_ind_ipcws, "Cox")
+
+# %%
+
+def test_loop(dataloader, model):
+    model.eval()
+    
+    batch_num = len(dataloader)
+    curr_con_ind = torch.tensor(0.0)
+    curr_con_ind_ipcw = torch.tensor(0.0)
+    curr_loss = torch.tensor(0.0)
 
     for i, batch in enumerate(dataloader):
         with torch.no_grad():
             x, (event, time) = batch
             pred = cox_model(x)
+            
+            loss = neg_partial_log_likelihood(pred, event, time, reduction="mean")
+            curr_loss += loss.detach()
+            
+            con = ConcordanceIndex()
             con_ind = con(pred, event, time)
-            test_con_ind += con_ind
-            weight_ipcw = get_ipcw(train_event, train_time, torch.tensor([val[0] for val in pred]).float())
-            con_ind_ipcw = con(pred.float(), event, time.float(), weight = weight_ipcw)
-            test_con_ind_ipcw += con_ind_ipcw
+            curr_con_ind += con_ind
+            
+            con = ConcordanceIndex()
+            try:
+                weight_ipcw = get_ipcw(train_event, train_time, torch.tensor([val[0] for val in pred]).float())
+            except:
+                curr_con_ind_ipcw += 0
+                print('ERROR FOR IPCW WEIGHTS IN TEST LOOP')
+            else:
+                con_ind_ipcw = con(pred.float(), event, time.float(), weight = weight_ipcw)
+                curr_con_ind_ipcw += con_ind_ipcw
+            
+    #curr_loss /= batch_num
+    #curr_con_ind /= batch_num
+    #curr_con_ind_ipcw /= batch_num
+    return curr_loss, curr_con_ind, curr_con_ind_ipcw    
 
-    test_con_ind /= batch_num
-    test_con_ind_ipcw /= batch_num
-    return test_con_ind, test_con_ind_ipcw
-
-# %%
-
-for t in range(EPOCHS):
-    curr_train_loss = train_loop(dataloader_train, cox_model, optimizer)
-    curr_con_ind, curr_con_ind_ipcw = test_loop(dataloader_test, cox_model)
-    if t % (EPOCHS // 10) == 0:
-        print(f"Epoch {t+1}\n-------------------------------")
-        print(f"Training loss: {curr_train_loss:0.2f}, Concordance Index: {curr_con_ind:0.3f}, IPCW Concordance Index: {curr_con_ind_ipcw:0.3f}\n")
-print("Done!")
-
-# %%
-
-#torch.manual_seed(42)
-
-# Init optimizer for Cox
-optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
-
-# Initiate empty list to store the loss on the train and validation sets
-train_losses = []
-val_losses = []
-
-# training loop
-for epoch in range(EPOCHS):
-    epoch_loss = torch.tensor(0.0)
-    for i, batch in enumerate(dataloader_train):
-        x, (event, time) = batch
-        optimizer.zero_grad()
-        log_hz = cox_model(x)  # shape = (16, 1)
-        a,b,c = log_hz, event, time
-        r = x
-        #break
-        loss = neg_partial_log_likelihood(log_hz, event, time, reduction="mean")
-        loss.backward()
-        optimizer.step()
-        epoch_loss += loss.detach()
-
-    if epoch % (EPOCHS // 10) == 0:
-        print(f"Epoch: {epoch:03}, Training loss: {epoch_loss:0.2f}")
-
-    # Reccord loss on train and test sets
-    epoch_loss /= i + 1
-    train_losses.append(epoch_loss)
-    with torch.no_grad():
-        x, (event, time) = next(iter(dataloader_val))
-        val_losses.append(
-            neg_partial_log_likelihood(cox_model(x), event, time, reduction="mean")
-        )
-
-# %%
-
-con = ConcordanceIndex()
-
-batch_num = len(dataloader_test)
-test_con_ind = 0
-
-for i, batch in enumerate(dataloader_test):
-    with torch.no_grad():
-        x, (event, time) = batch
-        pred = cox_model(x)
-        con_ind = con(pred, event, time)
-        test_con_ind += con_ind
-
-test_con_ind /= batch_num    
-print(f'Concordance index of test data: {test_con_ind:0.3f}')
-
-# %%
-
-optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
-con = ConcordanceIndex()
-torch.manual_seed(42)
-
-for i in range(EPOCHS):
-    size = len(complete_data.patient_status)*0.5
-    epoch_loss = torch.tensor(0.0)
-    # Set the model to training mode - important for batch normalization and dropout layers
-    # Unnecessary in this situation but added for best practices
-    #cox_model.train()
-    for k, batch in enumerate(dataloader_train):
-        X, (temp_event, temp_time) = batch
-        optimizer.zero_grad()
-        pred = cox_model(X)
-        x,y,z = pred, temp_event, temp_time
-        t = X
-        
-        loss = neg_partial_log_likelihood(pred, temp_event, temp_time, reduction="mean")
-        
-        # Backpropagation
-        loss.backward()
-        optimizer.step()
-        epoch_loss += loss.detach()
-        #optimizer.zero_grad()
-    
-    if i % 20 == 0:
-        loss, current = loss, k*len(X)+len(X)
-        conc = con(pred, temp_event, temp_time)
-        print(f"Epoch: {i:03}, Concordance Index: {conc:>5f}, Epoch loss: {epoch_loss:0.2f}")
-    
 
 
 
