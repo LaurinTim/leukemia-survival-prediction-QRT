@@ -8,6 +8,6 @@ model1:
 
 	Test Data Indices:
 
-		Concordance Index: 0.708
+		Concordance Index: 0.709
 
 		IPCW Concordance Index: 0.734
