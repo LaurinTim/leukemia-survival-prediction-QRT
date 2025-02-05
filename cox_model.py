@@ -156,25 +156,25 @@ cox_model = torch.nn.Sequential(
 
 # %%
 
-cox_model = torch.nn.Sequential(
-    torch.nn.BatchNorm1d(num_features),
-    torch.nn.Linear(3, 12),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(12, 4),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(4, 1)
-)
-
-# %%
-
 LEARNING_RATE = 1e-2
-EPOCHS = 20
+EPOCHS = 200
 optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 con = ConcordanceIndex()
 
 # %%
+
+#global best_ind, best_model
+best_ind = 0
+best_model = torch.nn.Sequential(
+    torch.nn.BatchNorm1d(num_features),  # Batch normalization
+    torch.nn.Linear(num_features, 32),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(32, 64),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
+)
 
 def train_loop(dataloader, model, optimizer):
     model.train()
@@ -215,6 +215,8 @@ def train_loop(dataloader, model, optimizer):
     return curr_loss, curr_con_ind, curr_con_ind_ipcw
 
 def test_loop(model):
+    global best_ind, best_model
+    
     model.eval()
     
     curr_con_ind = torch.tensor(0.0)
@@ -243,6 +245,15 @@ def test_loop(model):
         else:
             con_ind_ipcw = con(pred.float(), event, time.float(), weight = weight_ipcw)
             curr_con_ind_ipcw += con_ind_ipcw
+    
+    if curr_con_ind_ipcw > best_ind:
+        #print(f"\nNew best model found, old Index: {best_ind:0.3f}, new Index: {curr_con_ind_ipcw:0.3f}")
+        best_ind = curr_con_ind_ipcw
+        best_model.load_state_dict(model.state_dict())
+    else:
+        model.load_state_dict(best_model.state_dict())
+        #print(f"\nNo new best model found, index to beat: {best_ind:0.3f}")
+        
     
     #curr_loss /= num_el
     #curr_con_ind /= batch_num
@@ -273,10 +284,12 @@ for t in range(EPOCHS):
     train_con_ind_ipcws.append(curr_train_con_ind_ipcw)
     test_con_ind_ipcws.append(curr_test_con_ind_ipcw)
     
-    if t % (EPOCHS // 5) == 0:
-        print(f"Epoch {t+1}\n-------------------------------")
+    if t % (EPOCHS // 10) == 0:
+        print(f"\nEpoch {t+1}\n-------------------------------")
         print(f"Training loss: {curr_train_loss:0.3f}, Test loss: {curr_test_loss:0.3f},\nConcordance Index train: {curr_train_con_ind:0.3f}, IPCW Concordance Index train: {curr_train_con_ind_ipcw:0.3f},\nConcordance Index test:  {curr_test_con_ind:0.3f}, IPCW Concordance Index test:  {curr_test_con_ind_ipcw:0.3f}")
-print("Done!")
+print('\n' + '-'*50)
+print(f"Done! The IPCW Concordance Index of the test data is: {best_ind:0.3f}")
+print('-'*50)
 
 # %%
 
@@ -284,117 +297,5 @@ plot_losses(train_losses, test_losses, train_con_ind_ipcws, test_con_ind_ipcws, 
 
 # %%
 
-def test_loop(dataloader, model):
-    model.eval()
-    
-    batch_num = len(dataloader)
-    curr_con_ind = torch.tensor(0.0)
-    curr_con_ind_ipcw = torch.tensor(0.0)
-    curr_loss = torch.tensor(0.0)
-
-    for i, batch in enumerate(dataloader):
-        with torch.no_grad():
-            x, (event, time) = batch
-            pred = cox_model(x)
-            
-            loss = neg_partial_log_likelihood(pred, event, time, reduction="mean")
-            curr_loss += loss.detach()
-            
-            con = ConcordanceIndex()
-            con_ind = con(pred, event, time)
-            curr_con_ind += con_ind
-            
-            con = ConcordanceIndex()
-            try:
-                weight_ipcw = get_ipcw(train_event, train_time, torch.tensor([val[0] for val in pred]).float())
-            except:
-                curr_con_ind_ipcw += 0
-                print('ERROR FOR IPCW WEIGHTS IN TEST LOOP')
-            else:
-                con_ind_ipcw = con(pred.float(), event, time.float(), weight = weight_ipcw)
-                curr_con_ind_ipcw += con_ind_ipcw
-            
-    #curr_loss /= batch_num
-    #curr_con_ind /= batch_num
-    #curr_con_ind_ipcw /= batch_num
-    return curr_loss, curr_con_ind, curr_con_ind_ipcw    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model1.pth')
 
