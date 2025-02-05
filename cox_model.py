@@ -1,21 +1,14 @@
 import warnings
 warnings.filterwarnings("ignore")
 
-import lifelines
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader, Dataset
-from sklearn.model_selection import train_test_split
 
-# Our package
 from torchsurv.loss.cox import neg_partial_log_likelihood
-from torchsurv.loss.weibull import neg_log_likelihood, log_hazard, survival_function
-from torchsurv.metrics.brier_score import BrierScore
 from torchsurv.metrics.cindex import ConcordanceIndex
-from torchsurv.metrics.auc import Auc
-from torchsurv.stats.kaplan_meier import KaplanMeierEstimator
 from torchsurv.stats.ipcw import get_ipcw
 
 # PyTorch boilerplate - see https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py
@@ -35,7 +28,7 @@ else:
 EPOCHS = 100
 LEARNING_RATE = 1e-2
 
-# %%
+# %% copied from https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py
 
 def plot_losses(train_losses, test_losses, train_cop, test_cop, title: str = "Cox") -> None:
     x = np.linspace(1, len(train_losses), len(train_losses))
