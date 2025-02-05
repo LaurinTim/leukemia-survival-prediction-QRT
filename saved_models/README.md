@@ -6,7 +6,7 @@ model1:
 	Use BM_BLAST, HB and PLT, 200 epochs
 
   	Sequential:
-   		torch.nn.BatchNorm1d(num_features),  # Batch normalization
+   		torch.nn.BatchNorm1d(num_features),
 		torch.nn.Linear(num_features, 32),
 		torch.nn.ReLU(),
 		torch.nn.Dropout(),
@@ -27,7 +27,7 @@ model1:
 	Use BM_BLAST, HB and PLT, 200 epochs
 
  	Sequential:
-   		torch.nn.BatchNorm1d(num_features),  # Batch normalization
+   		torch.nn.BatchNorm1d(num_features),
 		torch.nn.Linear(num_features, 32),
 		torch.nn.ReLU(),
 		torch.nn.Dropout(),
