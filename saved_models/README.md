@@ -2,6 +2,8 @@ Saved Models:
 
 model1: 
 
+	cox_model.py was used to get this model
+ 
 	Use BM_BLAST, HB and PLT, 100 epochs
 
 	Test Data Indices:
