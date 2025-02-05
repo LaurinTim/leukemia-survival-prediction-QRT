@@ -42,7 +42,7 @@ model1:
 
   	Obtained score from submission: 0.653
 
-     model20: 
+model20: 
 
 	4features.py was used to get this model
 	Use BM_BLAST, HB, PLT and number of Somatic mutations (NSM), 100 epochs
