@@ -11,10 +11,18 @@ from torchsurv.loss.cox import neg_partial_log_likelihood
 from torchsurv.metrics.cindex import ConcordanceIndex
 from torchsurv.stats.ipcw import get_ipcw
 
-# PyTorch boilerplate - see https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py
-#from helpers_introduction import Custom_dataset, plot_losses
+data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT"
 
-# %%
+features = ['BM_BLAST', 'HB', 'PLT']
+
+#set working directory to data_dir
+import os
+os.chdir(data_dir)
+
+#import method to create test_results file
+from create_test_results_file import test_results
+
+# %% Check if CUDA cores are available for training, if yes set the batch size to 128, otherwise 32
 
 # Constant parameters accross models
 # Detect available accelerator; Downgrade batch size if only CPU available
@@ -28,7 +36,7 @@ else:
 EPOCHS = 100
 LEARNING_RATE = 1e-2
 
-# %% copied from https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py
+# %% Code from https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py, creates a scatter plot with normalized losses for the training and test data
 
 def plot_losses(train_losses, test_losses, train_cop, test_cop, title: str = "Cox") -> None:
     x = np.linspace(1, len(train_losses), len(train_losses))
@@ -52,13 +60,7 @@ def plot_losses(train_losses, test_losses, train_cop, test_cop, title: str = "Co
     plt.yscale("log")
     plt.show()
 
-# %%
-
-data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT"
-
-features = ['BM_BLAST', 'HB', 'PLT']
-
-# %%
+# %% Transformers for DatasetGen
     
 class TransStatus(object):
     def __call__(self, sample):
@@ -73,7 +75,7 @@ class TransClinical(object):
         res = np.array(sample.loc[sample.ID!='n', features])
         return torch.tensor(res[0]).float()
 
-# %%
+# %% Generate a custom dataset
 
 class DatasetGen(Dataset):
     def __init__(self, annotations_file, clinical_file, molecular_file, clinical_transform=None, molecular_transform=None, status_transform=None):
@@ -105,7 +107,7 @@ class DatasetGen(Dataset):
             status = self.status_transform(status)
         return info_clinical, (bool(status[0]), status[1])
 
-# %%
+# %% Get dataset from the training data, split it into training and test, create dataloaders for both
 
 complete_data = DatasetGen(data_dir+'\\target_train.csv', data_dir+'\\X_train\\clinical_train.csv', data_dir+'\\X_train\\molecular_train.csv', 
                   clinical_transform=TransClinical(), status_transform=TransStatus())
@@ -123,9 +125,8 @@ test_x = torch.tensor([np.array(val[0]) for val in test_data])
 test_event = torch.tensor([val[1][0] for val in test_data])
 test_time = torch.tensor([val[1][1] for val in test_data])
 
-# %%
+# %% Sanity check
 
-# Sanity check
 x, (event, time) = next(iter(dataloader_train))
 num_features = x.size(1)
 
@@ -134,7 +135,7 @@ print(f"num_features = {num_features}")
 print(f"event        = {event.shape}")
 print(f"time         = {time.shape}")
 
-# %%
+# %% Model used for training
 
 cox_model = torch.nn.Sequential(
     torch.nn.BatchNorm1d(num_features),  # Batch normalization
@@ -147,17 +148,18 @@ cox_model = torch.nn.Sequential(
     torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
 )
 
-# %%
+# %% Define learning rate, epoch and optimizer
 
 LEARNING_RATE = 1e-2
 EPOCHS = 200
 optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 con = ConcordanceIndex()
 
-# %%
+# %% Train and Test loops
 
 #global best_ind, best_model
 best_ind = 0
+best_ipcw_ind = 0
 best_model = torch.nn.Sequential(
     torch.nn.BatchNorm1d(num_features),  # Batch normalization
     torch.nn.Linear(num_features, 32),
@@ -208,7 +210,7 @@ def train_loop(dataloader, model, optimizer):
     return curr_loss, curr_con_ind, curr_con_ind_ipcw
 
 def test_loop(model):
-    global best_ind, best_model
+    global best_ind, best_ipcw_ind, best_model
     
     model.eval()
     
@@ -239,9 +241,10 @@ def test_loop(model):
             con_ind_ipcw = con(pred.float(), event, time.float(), weight = weight_ipcw)
             curr_con_ind_ipcw += con_ind_ipcw
     
-    if curr_con_ind_ipcw > best_ind:
+    if curr_con_ind_ipcw > best_ipcw_ind:
         #print(f"\nNew best model found, old Index: {best_ind:0.3f}, new Index: {curr_con_ind_ipcw:0.3f}")
-        best_ind = curr_con_ind_ipcw
+        best_ind = curr_con_ind
+        best_ipcw_ind = curr_con_ind_ipcw
         best_model.load_state_dict(model.state_dict())
     else:
         model.load_state_dict(best_model.state_dict())
@@ -253,7 +256,7 @@ def test_loop(model):
     #curr_con_ind_ipcw /= batch_num
     return curr_loss, curr_con_ind, curr_con_ind_ipcw
 
-# %%
+# %% Iterate through Train and Test loops
 
 train_losses = []
 test_losses = []
@@ -278,18 +281,61 @@ for t in range(EPOCHS):
     test_con_ind_ipcws.append(curr_test_con_ind_ipcw)
     
     if t % (EPOCHS // 10) == 0:
-        print(f"\nEpoch {t+1}, Index to beat: {best_ind:0.3f}\n-------------------------------")
+        print(f"\nEpoch {t+1}, Index to beat: {best_ipcw_ind:0.3f}\n-------------------------------")
         print(f"Training loss: {curr_train_loss:0.3f}, Test loss: {curr_test_loss:0.3f},\nConcordance Index train: {curr_train_con_ind:0.3f}, IPCW Concordance Index train: {curr_train_con_ind_ipcw:0.3f},\nConcordance Index test:  {curr_test_con_ind:0.3f}, IPCW Concordance Index test:  {curr_test_con_ind_ipcw:0.3f}")
 print('\n' + '-'*50)
-print(f"Done!")
-print(f"The Concordance Index of the test data is: {test_con_inds[-1]:0.3f}, IPCW Concordance Index of the test data is: {best_ind:0.3f}")
+print("Done!")
+print(f"The Concordance Index of the test data is: {best_ind:0.3f}, IPCW Concordance Index of the test data is: {best_ipcw_ind:0.3f}")
 print('-'*50)
 
-# %%
+# %% Plot the training and test losses
 
 plot_losses(train_losses, test_losses, train_con_ind_ipcws, test_con_ind_ipcws, "Cox")
 
-# %%
+# %% !!!ONLY RUN IF THE MODEL SHOULD GET SAVED!!!
 
-torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model1.pth')
+torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model_temp.pth')
 
+# %% Check if the Conconcordance and IPCW indices obtained from the test_results method match the ones calculated during the training
+
+test_model = torch.nn.Sequential(
+    torch.nn.BatchNorm1d(num_features),  # Batch normalization
+    torch.nn.Linear(num_features, 32),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(32, 64),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
+)
+
+df_test = pd.DataFrame(test_x, columns = features)
+df_test.insert(0, "ID", [str(int(val)) for val in np.linspace(1, len(df_test), len(df_test))])
+
+a = test_results(test_model, data_dir + "\\saved_models\\model_temp.pth", df_test, features, "model_temp", return_df = True)
+pred_test = torch.tensor(a.risk_score).float()
+
+con = ConcordanceIndex()
+weight_test = get_ipcw(train_event, train_time, pred_test)
+ind_test = con(pred_test, test_event, test_time)
+ind_ipcw_test = con(pred_test, test_event, test_time.float(), weight = weight_test)
+
+print(f"Concordance Index and IPCW Concordance Index obtrained from data in test_data:\nConcordance Index: {ind_test:0.3f}\nIPCW Concordance Index: {ind_ipcw_test:0.3f}")
+
+# %% Run the rest_results method and create a csv file for the submission
+
+final_df = pd.read_csv(data_dir + "\\X_test\\clinical_test.csv")
+final_df = final_df[['ID'] + features]
+
+test_model = torch.nn.Sequential(
+    torch.nn.BatchNorm1d(num_features),  # Batch normalization
+    torch.nn.Linear(num_features, 32),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(32, 64),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
+)
+
+test_results(test_model, data_dir + "\\saved_models\\model_temp.pth", final_df, features, "model_temp")
