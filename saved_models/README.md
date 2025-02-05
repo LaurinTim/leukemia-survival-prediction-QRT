@@ -6,7 +6,7 @@ model1:
  
 	Use BM_BLAST, HB and PLT, 100 epochs
 
-	Test Data Indices:
+	Test Data Indices calculated while training:
 
 		Concordance Index: 0.709
 
