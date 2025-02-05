@@ -8,6 +8,6 @@ model1:
 
 	Test Data Indices calculated while training:
 
-		Concordance Index: 0.709
+		Concordance Index: 0.698
 
-		IPCW Concordance Index: 0.734
+		IPCW Concordance Index: 0.726
