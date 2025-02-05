@@ -1,9 +1,11 @@
 Saved Models:
 
-model1: Use BM_BLAST, HB and PLT, 100 epochs
+model1: 
 
-Test Data Indices:
+	Use BM_BLAST, HB and PLT, 100 epochs
 
-Concordance Index: 0.708
+	Test Data Indices:
 
-IPCW Concordance Index: 0.734
+		Concordance Index: 0.708
+
+		IPCW Concordance Index: 0.734
