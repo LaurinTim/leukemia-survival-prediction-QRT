@@ -328,15 +328,6 @@ print(f"Concordance Index and IPCW Concordance Index obtrained from data in test
 final_df = pd.read_csv(data_dir + "\\X_test\\clinical_test.csv")
 final_df = final_df[['ID'] + features]
 
-test_model = torch.nn.Sequential(
-    torch.nn.BatchNorm1d(num_features),  # Batch normalization
-    torch.nn.Linear(num_features, 32),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(32, 64),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
-)
+test_model = NeuralNetwork()
 
 test_results(test_model, data_dir + "\\saved_models\\model_temp.pth", final_df, features, "model_temp")
