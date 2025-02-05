@@ -137,16 +137,35 @@ print(f"time         = {time.shape}")
 
 # %% Model used for training
 
-cox_model = torch.nn.Sequential(
-    torch.nn.BatchNorm1d(num_features),  # Batch normalization
-    torch.nn.Linear(num_features, 32),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(32, 64),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
-)
+class NeuralNetwork(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.flatten = torch.nn.Flatten()
+        self.linear_relu_stack = torch.nn.Sequential(
+            torch.nn.BatchNorm1d(num_features),
+            torch.nn.Linear(num_features, 32),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(),
+            torch.nn.Linear(32, 64),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(),
+            torch.nn.Linear(64, 1)
+        )
+
+    def forward(self, x):
+        x = self.flatten(x)
+        logit = self.linear_relu_stack(x)
+        return logit
+    
+    def state_dict(self):
+        state_dict_temp = super().state_dict()
+        return state_dict_temp
+    
+    def load_state_dict(self, state_dict):
+        super().load_state_dict(state_dict)
+        return
+
+cox_model = NeuralNetwork()
 
 # %% Define learning rate, epoch and optimizer
 
@@ -160,16 +179,7 @@ con = ConcordanceIndex()
 #global best_ind, best_model
 best_ind = 0
 best_ipcw_ind = 0
-best_model = torch.nn.Sequential(
-    torch.nn.BatchNorm1d(num_features),  # Batch normalization
-    torch.nn.Linear(num_features, 32),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(32, 64),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
-)
+best_model = NeuralNetwork()
 
 def train_loop(dataloader, model, optimizer):
     model.train()
@@ -298,16 +308,7 @@ torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model_temp.pth')
 
 # %% Check if the Conconcordance and IPCW indices obtained from the test_results method match the ones calculated during the training
 
-test_model = torch.nn.Sequential(
-    torch.nn.BatchNorm1d(num_features),  # Batch normalization
-    torch.nn.Linear(num_features, 32),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(32, 64),
-    torch.nn.ReLU(),
-    torch.nn.Dropout(),
-    torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
-)
+test_model = NeuralNetwork()
 
 df_test = pd.DataFrame(test_x, columns = features)
 df_test.insert(0, "ID", [str(int(val)) for val in np.linspace(1, len(df_test), len(df_test))])
