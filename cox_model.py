@@ -285,10 +285,11 @@ for t in range(EPOCHS):
     test_con_ind_ipcws.append(curr_test_con_ind_ipcw)
     
     if t % (EPOCHS // 10) == 0:
-        print(f"\nEpoch {t+1}\n-------------------------------")
+        print(f"\nEpoch {t+1}, Index to beat: {best_ind:0.3f}\n-------------------------------")
         print(f"Training loss: {curr_train_loss:0.3f}, Test loss: {curr_test_loss:0.3f},\nConcordance Index train: {curr_train_con_ind:0.3f}, IPCW Concordance Index train: {curr_train_con_ind_ipcw:0.3f},\nConcordance Index test:  {curr_test_con_ind:0.3f}, IPCW Concordance Index test:  {curr_test_con_ind_ipcw:0.3f}")
 print('\n' + '-'*50)
-print(f"Done! The IPCW Concordance Index of the test data is: {best_ind:0.3f}")
+print(f"Done!")
+print(f"The Concordance Index of the test data is: {test_con_inds[-1]:0.3f}, IPCW Concordance Index of the test data is: {best_ind:0.3f}")
 print('-'*50)
 
 # %%
