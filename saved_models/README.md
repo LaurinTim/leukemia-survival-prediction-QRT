@@ -105,7 +105,7 @@ model30:
 
   	Obtained score from submission: -
 
-model21: 
+model31: 
 
 	4features.py was used to get this model
 	Use BM_BLAST, HB, PLT and number of Somatic mutations (NSM), 30 epochs
