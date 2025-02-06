@@ -1,22 +1,29 @@
-#Same as cox_model.py but now use 4 features, as an additional feature the number of somatic mutations, call this NSM
-
 import warnings
 warnings.filterwarnings("ignore")
 
+import lifelines
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader, Dataset
+from sklearn.model_selection import train_test_split
 
 # Our package
 from torchsurv.loss.cox import neg_partial_log_likelihood
+from torchsurv.loss.weibull import neg_log_likelihood, log_hazard, survival_function
+from torchsurv.metrics.brier_score import BrierScore
 from torchsurv.metrics.cindex import ConcordanceIndex
+from torchsurv.metrics.auc import Auc
+from torchsurv.stats.kaplan_meier import KaplanMeierEstimator
 from torchsurv.stats.ipcw import get_ipcw
+
+# PyTorch boilerplate - see https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py
+#from helpers_introduction import Custom_dataset, plot_losses
 
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT"
 
-features = ['BM_BLAST', 'HB', 'PLT', 'NSM']
+features = ['BM_BLAST', 'HB', 'PLT']
 
 #set working directory to data_dir
 import os
@@ -32,6 +39,7 @@ from create_test_results_file import test_results
 if any([torch.cuda.is_available(), torch.backends.mps.is_available()]):
     print("CUDA-enabled GPU/TPU is available.")
     BATCH_SIZE = 128  # batch size for training
+    #torch.set_default_device('cuda')
 else:
     print("No CUDA-enabled GPU found, using CPU.")
     BATCH_SIZE = 32  # batch size for training
@@ -41,14 +49,22 @@ LEARNING_RATE = 1e-2
 
 # %% Code from https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py, creates a scatter plot with normalized losses for the training and test data
 
-def plot_losses(train_losses, test_losses, title: str = "Cox") -> None:
+def plot_losses(train_losses, test_losses, train_cop, test_cop, title: str = "Cox") -> None:
     x = np.linspace(1, len(train_losses), len(train_losses))
     
     train_losses = torch.stack(train_losses) / train_losses[0]
     test_losses = torch.stack(test_losses) / test_losses[0]
-
+    
+    train_cop = torch.stack(train_cop) / train_cop[0]
+    test_cop = torch.stack(test_cop) / test_cop[0]
+    
     plt.scatter(x, train_losses, label="training", color = 'C0')
     plt.scatter(x, test_losses, label="test", color = 'C1', s = 20)
+    #plt.plot(train_losses, label="training", color = 'C0')
+    #plt.plot(test_losses, label="test", color = 'C1')
+    #plt.plot(train_cop, '--', color = 'C0')
+    #plt.plot(test_cop, '--', color = 'C1')
+    plt.legend()
     plt.xlabel("Epochs")
     plt.ylabel("Normalized loss")
     plt.title(title)
@@ -67,26 +83,19 @@ class TransStatus(object):
         
 class TransClinical(object):
     def __call__(self, sample):
-        res = np.array(sample.loc[sample.ID!='n', features[:-1]])
+        res = np.array(sample.loc[sample.ID!='n', features])
         return torch.tensor(res[0]).float()
-
-class TransMolecular(object):
-    def __call__(self, sample):
-        return torch.tensor([len(sample)])
 
 # %% Generate a custom dataset
 
 class DatasetGen(Dataset):
     def __init__(self, annotations_file, clinical_file, molecular_file, clinical_transform=None, molecular_transform=None, status_transform=None):
         self.patient_status = pd.read_csv(annotations_file).dropna(subset=['OS_YEARS', 'OS_STATUS'])
-        
         self.patient_clinical = pd.read_csv(clinical_file)
+        self.patient_molecular = pd.read_csv(molecular_file)
         self.patient_clinical = self.patient_clinical.loc[self.patient_clinical['ID'].isin(self.patient_status['ID'])]
         self.patient_clinical = self.patient_clinical.fillna(0)
-        
-        self.patient_molecular = pd.read_csv(molecular_file)
         self.patient_molecular = self.patient_molecular.loc[self.patient_molecular['ID'].isin(self.patient_status['ID'])]
-        
         self.clinical_transform = clinical_transform
         self.molecular_transform = molecular_transform
         self.status_transform = status_transform
@@ -100,24 +109,21 @@ class DatasetGen(Dataset):
         os_status = self.patient_status.iloc[idx, 2]
         status = np.array([os_status, os_years])
         info_clinical = self.patient_clinical.loc[self.patient_clinical.ID == patient_id]
-        info_molecular = self.patient_molecular[self.patient_molecular.ID == patient_id]
-        
-        if self.clinical_transform and self.molecular_transform:
+        #info_molecular = self.patient_molecular.iloc[idx]
+        #info = pd.concat([info_clinical, info_molecular])
+        if self.clinical_transform:
             info_clinical = self.clinical_transform(info_clinical)
-            info_molecular = self.molecular_transform(info_molecular)
-            info = torch.cat((info_clinical, info_molecular))
-            
+            #info_molecular = self.molecular_transform(info_molecular)
         if self.status_transform:
             status = self.status_transform(status)
-            
-        return info, (bool(status[0]), status[1])
+        return info_clinical, (bool(status[0]), status[1])
 
 # %% Get dataset from the training data, split it into training and test, create dataloaders for both
 
 complete_data = DatasetGen(data_dir+'\\target_train.csv', data_dir+'\\X_train\\clinical_train.csv', data_dir+'\\X_train\\molecular_train.csv', 
-                  clinical_transform=TransClinical(), molecular_transform=TransMolecular(), status_transform=TransStatus())
+                  clinical_transform=TransClinical(), status_transform=TransStatus())
 
-train_data, val_data, test_data = torch.utils.data.random_split(complete_data, [0.7, 0.0, 0.3])
+train_data, val_data, test_data = torch.utils.data.random_split(complete_data, [0.7, 0.0, 0.3])#, generator=torch.Generator(device='cuda'))
 
 dataloader_train = DataLoader(train_data, batch_size = BATCH_SIZE)
 dataloader_val = DataLoader(val_data, batch_size = BATCH_SIZE)
@@ -126,7 +132,7 @@ dataloader_test = DataLoader(test_data, batch_size = BATCH_SIZE)
 train_event = torch.tensor([val[1][0] for val in train_data]).bool()
 train_time = torch.tensor([val[1][1] for val in train_data]).float()
 
-test_x = torch.tensor([np.array(val[0]) for val in test_data])
+test_x = torch.tensor([val[0].cpu().numpy() for val in test_data])
 test_event = torch.tensor([val[1][0] for val in test_data])
 test_time = torch.tensor([val[1][1] for val in test_data])
 
@@ -139,6 +145,19 @@ print(f"x (shape)    = {x.shape}")
 print(f"num_features = {num_features}")
 print(f"event        = {event.shape}")
 print(f"time         = {time.shape}")
+
+# %% Model used for training
+
+cox_model = torch.nn.Sequential(
+    torch.nn.BatchNorm1d(num_features),  # Batch normalization
+    torch.nn.Linear(num_features, 32),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(32, 64),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(64, 1)  # Estimating log hazards for Cox models
+)
 
 # %%
 
@@ -176,7 +195,7 @@ cox_model = NeuralNetwork()
 # %% Define learning rate, epoch and optimizer
 
 LEARNING_RATE = 1e-2
-EPOCHS = 100
+EPOCHS = 50
 optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 #con = ConcordanceIndex()
 
@@ -185,8 +204,19 @@ optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 #global best_ind, best_model
 best_ind = 0
 best_ipcw_ind = 0
-best_epoch = 0
 best_model = NeuralNetwork()
+
+'''
+best_model = torch.nn.Sequential(
+    torch.nn.BatchNorm1d(num_features),  # Batch normalization
+    torch.nn.Linear(num_features, 32),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(32, 64),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
+)'''
 
 def train_loop(dataloader, model, optimizer):
     model.train()
@@ -212,7 +242,7 @@ def train_loop(dataloader, model, optimizer):
         
         con = ConcordanceIndex()
         try:
-            weight_ipcw = get_ipcw(train_event, train_time, torch.tensor([val[0] for val in log_hz]).float())
+            weight_ipcw = get_ipcw(train_event, train_time, time)
         except:
             curr_con_ind_ipcw += 0
             print('ERROR FOR IPCW WEIGHTS IN TRAIN LOOP')
@@ -225,8 +255,8 @@ def train_loop(dataloader, model, optimizer):
     curr_con_ind_ipcw /= batch_num
     return curr_loss, curr_con_ind, curr_con_ind_ipcw
 
-def test_loop(model, epoch):
-    global best_ind, best_ipcw_ind, best_epoch, best_model
+def test_loop(model):
+    global best_ind, best_ipcw_ind, best_model
     
     model.eval()
     
@@ -249,7 +279,7 @@ def test_loop(model, epoch):
         
         con = ConcordanceIndex()
         try:
-            weight_ipcw = get_ipcw(train_event, train_time, torch.tensor([val[0] for val in pred]).float())
+            weight_ipcw = get_ipcw(train_event, train_time, time)
         except:
             curr_con_ind_ipcw += 0
             print('ERROR FOR IPCW WEIGHTS IN TEST LOOP')
@@ -262,7 +292,6 @@ def test_loop(model, epoch):
         best_ind = curr_con_ind
         best_ipcw_ind = curr_con_ind_ipcw
         best_model.load_state_dict(model.state_dict())
-        best_epoch = epoch
     else:
         model.load_state_dict(best_model.state_dict())
         #print(f"\nNo new best model found, index to beat: {best_ind:0.3f}")
@@ -286,7 +315,7 @@ test_con_ind_ipcws = []
 
 for t in range(EPOCHS):
     curr_train_loss, curr_train_con_ind, curr_train_con_ind_ipcw = train_loop(dataloader_train, cox_model, optimizer)
-    curr_test_loss, curr_test_con_ind, curr_test_con_ind_ipcw = test_loop(cox_model, t)
+    curr_test_loss, curr_test_con_ind, curr_test_con_ind_ipcw = test_loop(cox_model)
     
     train_losses.append(curr_train_loss)
     test_losses.append(curr_test_loss)
@@ -301,26 +330,38 @@ for t in range(EPOCHS):
         print(f"\nEpoch {t+1}, Index to beat: {best_ipcw_ind:0.3f}\n-------------------------------")
         print(f"Training loss: {curr_train_loss:0.3f}, Test loss: {curr_test_loss:0.3f},\nConcordance Index train: {curr_train_con_ind:0.3f}, IPCW Concordance Index train: {curr_train_con_ind_ipcw:0.3f},\nConcordance Index test:  {curr_test_con_ind:0.3f}, IPCW Concordance Index test:  {curr_test_con_ind_ipcw:0.3f}")
 print('\n' + '-'*50)
-print(f"Done! The best epoch was {best_epoch}.")
+print("Done!")
 print(f"The Concordance Index of the test data is: {best_ind:0.3f}, IPCW Concordance Index of the test data is: {best_ipcw_ind:0.3f}")
 print('-'*50)
 
 # %% Plot the training and test losses
 
-plot_losses(train_losses, test_losses, "Cox")
+plot_losses(train_losses, test_losses, train_con_ind_ipcws, test_con_ind_ipcws, "Cox")
 
 # %% !!!ONLY RUN IF THE MODEL SHOULD GET SAVED!!!
 
-torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model20.pth')
+torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model12.pth')
 
 # %% Check if the Conconcordance and IPCW indices obtained from the test_results method match the ones calculated during the training
+
+'''
+test_model = torch.nn.Sequential(
+    torch.nn.BatchNorm1d(num_features),  # Batch normalization
+    torch.nn.Linear(num_features, 32),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(32, 64),
+    torch.nn.ReLU(),
+    torch.nn.Dropout(),
+    torch.nn.Linear(64, 1),  # Estimating log hazards for Cox models
+)'''
 
 test_model = NeuralNetwork()
 
 df_test = pd.DataFrame(test_x, columns = features)
 df_test.insert(0, "ID", [str(int(val)) for val in np.linspace(1, len(df_test), len(df_test))])
 
-a = test_results(test_model, data_dir + "\\saved_models\\model20.pth", df_test, features, "model_temp", return_df = True)
+a = test_results(test_model, data_dir + "\\saved_models\\model12.pth", df_test, features, "model_temp", return_df = True)
 pred_test = torch.tensor(a.risk_score).float()
 
 con = ConcordanceIndex()
@@ -333,86 +374,8 @@ print(f"Concordance Index and IPCW Concordance Index obtrained from data in test
 # %% Run the rest_results method and create a csv file for the submission
 
 final_df = pd.read_csv(data_dir + "\\X_test\\clinical_test.csv")
-final_df = final_df[['ID'] + features[:-1]]
-final_mol_df = pd.read_csv(data_dir + "\\X_test\\molecular_test.csv")
-final_df.insert(4, 'NSM', [len(final_mol_df[final_mol_df.ID == val]) for val in list(final_df.ID)])
+final_df = final_df[['ID'] + features]
 
 test_model = NeuralNetwork()
 
-test_results(test_model, data_dir + "\\saved_models\\model20.pth", final_df, features, "model20")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+test_results(test_model, data_dir + "\\saved_models\\model12.pth", final_df, features, "model12")
