@@ -124,4 +124,4 @@ model31:
 		Concordance Index: 0.731
 		IPCW Concordance Index: 0.714
 
-  	Obtained score from submission: -
+  	Obtained score from submission: 0.656 (why the large discrepancy?)
