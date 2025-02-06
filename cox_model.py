@@ -206,7 +206,7 @@ def train_loop(dataloader, model, optimizer):
         
         con = ConcordanceIndex()
         try:
-            weight_ipcw = get_ipcw(train_event, train_time, torch.tensor([val[0] for val in log_hz]).float())
+            weight_ipcw = get_ipcw(train_event, train_time, time)
         except:
             curr_con_ind_ipcw += 0
             print('ERROR FOR IPCW WEIGHTS IN TRAIN LOOP')
@@ -243,7 +243,7 @@ def test_loop(model):
         
         con = ConcordanceIndex()
         try:
-            weight_ipcw = get_ipcw(train_event, train_time, torch.tensor([val[0] for val in pred]).float())
+            weight_ipcw = get_ipcw(train_event, train_time, time)
         except:
             curr_con_ind_ipcw += 0
             print('ERROR FOR IPCW WEIGHTS IN TEST LOOP')
