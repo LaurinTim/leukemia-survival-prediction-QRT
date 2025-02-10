@@ -198,7 +198,7 @@ model50:
 
   	Obtained score from submission: -
 
-model50: 
+model60: 
 
 	4features.py was used to get this model
 	Use BM_BLAST, HB, PLT and number of Somatic mutations (NSM), 200 epochs, learning rate 1e-4
