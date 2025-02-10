@@ -203,7 +203,10 @@ class NeuralNetwork(torch.nn.Module):
             torch.nn.Linear(32, 64),
             torch.nn.ReLU(),
             torch.nn.Dropout(),
-            torch.nn.Linear(64, 1)
+            torch.nn.Linear(64, 128),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(),
+            torch.nn.Linear(128, 1)
         )
 
     def forward(self, x):
@@ -224,7 +227,7 @@ cox_model = NeuralNetwork()
 # %% Define learning rate, epoch and optimizer
 
 LEARNING_RATE = 1e-2
-EPOCHS = 50
+EPOCHS = 2000
 optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 
 # %% Train and Test loops
@@ -369,7 +372,7 @@ for t in range(EPOCHS):
     test_con_ind_ipcws.append(curr_test_con_ind_ipcw)
     test_con_ind_ipcws_sk.append(curr_test_con_ind_ipcw_sk)
     
-    if t % (EPOCHS // 5) == 0:
+    if t % (EPOCHS // 20) == 0:
         print(f"\nEpoch {t+1}, Index to beat: {best_ipcw_ind:0.3f} ({best_ipcw_ind_sk:0.3f}), Best Epoch: {best_epoch}\n-------------------------------")
         #print(f"Model is best model: {compare_models(cox_model, best_model)}")
         #print(f"torchsurv Index: {curr_test_con_ind:0.3f}, sksurv Index: {curr_test_con_ind_sk:0.3f}")
@@ -385,6 +388,11 @@ print('-'*50)
 # %% Plot the training and test losses
 
 plot_losses(train_losses, test_losses, "Cox")
+
+# %%
+
+df = pd.DataFrame([train_losses, test_losses], index = ['train', 'test']).transpose()
+df.to_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT\\saved_models_plots\\model5_data.csv")
 
 # %% Lists with elements [CI, IPCW CI, IPCW CI SK] to see if it is better to copy state dict from best model or not and if yes if the metric from sksurv is better
 #repeat both methods 5 times with 50 iterations
@@ -404,7 +412,7 @@ c = [[0.727, 0.743, 0.695], [0.727, 0.740, 0.695], [0.728, 0.740, 0.697], [0.728
 # %% !!!ONLY RUN IF THE MODEL SHOULD GET SAVED!!!
 
 cox_model.load_state_dict(copy.deepcopy(best_model.state_dict()))
-torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model32.pth')
+torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model5.pth')
 
 # %% Check if the Conconcordance and IPCW indices obtained from the test_results method match the ones calculated during the training
 
@@ -413,7 +421,7 @@ test_model = NeuralNetwork()
 df_test = pd.DataFrame(test_x, columns = features)
 df_test.insert(0, "ID", [str(int(val)) for val in np.linspace(1, len(df_test), len(df_test))])
 
-a = test_results(test_model, data_dir + "\\saved_models\\model32.pth", df_test, features, "model_temp", return_df = True)
+a = test_results(test_model, data_dir + "\\saved_models\\model5.pth", df_test, features, "model_temp", return_df = True)
 pred_test = torch.tensor(a.risk_score).float()
 
 con = ConcordanceIndex()
@@ -432,5 +440,4 @@ final_df.insert(4, 'NSM', [len(final_mol_df[final_mol_df.ID == val]) for val in 
 
 test_model = NeuralNetwork()
 
-test_results(test_model, data_dir + "\\saved_models\\model32.pth", final_df, features, "model32")
-
+test_results(test_model, data_dir + "\\saved_models\\model5.pth", final_df, features, "model5")
