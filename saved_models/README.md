@@ -149,3 +149,75 @@ model31:
 		IPCW Concordance Index: 0.703
 
   	Obtained score from submission: 0.654 (why the large discrepancy?)
+
+model40: 
+
+	4features.py was used to get this model
+	Use BM_BLAST, HB, PLT and number of Somatic mutations (NSM), 50 epochs, learning rate was lowered to 0.001
+
+ 	Sequential:
+   		torch.nn.BatchNorm1d(4),
+		torch.nn.Linear(4, 32),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+		torch.nn.Linear(32, 64),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+  		torch.nn.Linear(64, 128),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+		torch.nn.Linear(128, 1)
+
+	Test Data Indices calculated while training:
+		Concordance Index: 0.699
+		IPCW Concordance Index: 0.673
+
+  	Obtained score from submission: -
+
+model50: 
+
+	4features.py was used to get this model
+	Use BM_BLAST, HB, PLT and number of Somatic mutations (NSM), 1000 epochs, learning rate was lowered to 0.0001
+
+ 	Sequential:
+   		torch.nn.BatchNorm1d(4),
+		torch.nn.Linear(4, 32),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+		torch.nn.Linear(32, 64),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+  		torch.nn.Linear(64, 128),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+		torch.nn.Linear(128, 1)
+
+	Test Data Indices calculated while training:
+		Concordance Index: 0.695
+		IPCW Concordance Index: 0.676
+
+  	Obtained score from submission: -
+
+model50: 
+
+	4features.py was used to get this model
+	Use BM_BLAST, HB, PLT and number of Somatic mutations (NSM), 200 epochs, learning rate 1e-4
+
+ 	Sequential:
+   		torch.nn.BatchNorm1d(4),
+		torch.nn.Linear(4, 32),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+		torch.nn.Linear(32, 64),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+  		torch.nn.Linear(64, 128),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+		torch.nn.Linear(128, 1)
+
+	Test Data Indices calculated while training:
+		Concordance Index: 0.708
+		IPCW Concordance Index: 0.677
+
+  	Obtained score from submission: -

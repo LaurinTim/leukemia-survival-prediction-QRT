@@ -44,18 +44,21 @@ else:
 
 # %% Code from https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py, creates a scatter plot with normalized losses for the training and test data
 
-def plot_losses(train_losses, test_losses, title: str = "Cox") -> None:
+def plot_losses(train_losses, test_losses, title: str = "Cox", norm = True) -> None:
     x = np.linspace(1, len(train_losses), len(train_losses))
     
-    train_losses = torch.stack(train_losses) / train_losses[0]
-    test_losses = torch.stack(test_losses) / test_losses[0]
+    if norm == True:
+        train_losses = torch.stack(train_losses) / train_losses[0]
+        test_losses = torch.stack(test_losses) / test_losses[0]
 
     plt.scatter(x, train_losses, label="training", color = 'C0')
     plt.scatter(x, test_losses, label="test", color = 'C1', s = 20)
     plt.xlabel("Epochs")
-    plt.ylabel("Normalized loss")
+    if norm == True: plt.ylabel("Normalized loss")
+    else: plt.ylabel("Loss")
     plt.title(title)
     plt.yscale("log")
+    plt.legend()
     plt.show()
 
 # %%
@@ -169,6 +172,7 @@ dataloader_train = DataLoader(train_data, batch_size = BATCH_SIZE)
 dataloader_val = DataLoader(val_data, batch_size = BATCH_SIZE)
 dataloader_test = DataLoader(test_data, batch_size = BATCH_SIZE)
 
+train_x = torch.tensor([val[0].cpu().numpy() for val in train_data])
 train_event = torch.tensor([val[1][0] for val in train_data]).bool()
 train_time = torch.tensor([val[1][1] for val in train_data]).float()
 train_status_arr = status_to_StructuredArray([val[1] for val in train_data])
@@ -177,6 +181,16 @@ test_x = torch.tensor([val[0].cpu().numpy() for val in test_data])
 test_event = torch.tensor([val[1][0] for val in test_data])
 test_time = torch.tensor([val[1][1] for val in test_data])
 test_status_arr = status_to_StructuredArray([val[1] for val in test_data])
+
+val_x = torch.tensor([val[0].cpu().numpy() for val in val_data])
+val_event = torch.tensor([val[1][0] for val in val_data])
+val_time = torch.tensor([val[1][1] for val in val_data])
+val_status_arr = status_to_StructuredArray([val[1] for val in val_data])
+
+test_len_dat = np.random.choice(np.arange(0, len(train_x), 1), len(test_x))
+test_len_x = torch.tensor(np.array(train_x)[test_len_dat])
+test_len_event = torch.tensor(np.array(train_event)[test_len_dat])
+test_len_time = torch.tensor(np.array(train_time)[test_len_dat])
 
 # %% Sanity check
 
@@ -226,8 +240,8 @@ cox_model = NeuralNetwork()
 
 # %% Define learning rate, epoch and optimizer
 
-LEARNING_RATE = 1e-2
-EPOCHS = 2000
+LEARNING_RATE = 1e-4
+EPOCHS = 200
 optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 
 # %% Train and Test loops
@@ -238,16 +252,20 @@ best_ipcw_ind = 0
 best_ind_sk = 0
 best_ipcw_ind_sk = 0
 best_epoch = 0
+best_loss = -1
 best_model = NeuralNetwork()
 #best_state = OrderedDict()
 
 def train_loop(dataloader, model, optimizer):
     model.train()
     
-    batch_num = len(dataloader)
+    
+    #batch_num = len(dataloader)
     curr_con_ind = torch.tensor(0.0)
     curr_con_ind_ipcw = torch.tensor(0.0)
     curr_loss = torch.tensor(0.0)
+    weight = 0
+    indiv_con_ind_ipcw = []
     
     for i, batch in enumerate(dataloader):
         x, (event, time) = batch
@@ -259,30 +277,56 @@ def train_loop(dataloader, model, optimizer):
         loss = neg_partial_log_likelihood(log_hz, event, time, reduction="mean")
         loss.backward()
         optimizer.step()
-        curr_loss += loss.detach()
+        curr_loss += loss.detach() * len(x)/BATCH_SIZE
         
         con = ConcordanceIndex()
         con_ind = con(log_hz, event, time)
-        curr_con_ind += con_ind
+        curr_con_ind += con_ind * len(x)/BATCH_SIZE
         
         con = ConcordanceIndex()
         try:
             weight_ipcw = get_ipcw(train_event, train_time, time)
         except:
+            indiv_con_ind_ipcw += [0]
             curr_con_ind_ipcw += 0
             print('ERROR FOR IPCW WEIGHTS IN TRAIN LOOP')
         else:
             con_ind_ipcw = con(log_hz.float(), event, time.float(), weight = weight_ipcw)
-            curr_con_ind_ipcw += con_ind_ipcw
-                        
-    curr_loss /= batch_num
-    curr_con_ind /= batch_num
-    curr_con_ind_ipcw /= batch_num
-    return curr_loss, curr_con_ind, curr_con_ind_ipcw
+            indiv_con_ind_ipcw += [round(float(con_ind_ipcw.detach()), 3)]
+            #curr_con_ind_ipcw += con_ind_ipcw
+            curr_con_ind_ipcw += con_ind_ipcw * len(x)/BATCH_SIZE
+            
+        weight += len(x)/BATCH_SIZE
+        
+    optimizer.zero_grad()
+    model.eval()
+    with torch.no_grad():
+        all_pred = model(train_x)
+        all_loss = neg_partial_log_likelihood(all_pred, train_event, train_time, reduction="mean").detach()
+        
+        weight_ipcw = get_ipcw(train_event, train_time, train_time)
+        all_ind = con(all_pred.float(), train_event, train_time.float(), weight = weight_ipcw)
+        #print("ALL TRAIN:")
+        #print(loss, ind)
+        
+    with torch.no_grad():
+        x, event, time = test_len_x, test_len_event, test_len_time
+        test_len_pred = model(x)
+        test_len_loss = neg_partial_log_likelihood(test_len_pred, event, time, reduction="mean").detach()
+        
+        weight_ipcw = get_ipcw(train_event, train_time, time)
+        test_len_ind = con(test_len_pred.float(), event, time.float(), weight = weight_ipcw)
+    
+    all_loss = all_loss * np.log(len(train_time)/len(test_time))
+    curr_loss /= weight
+    curr_con_ind /= weight
+    curr_con_ind_ipcw /= weight
+    return curr_loss, curr_con_ind, curr_con_ind_ipcw, all_ind, all_loss, test_len_ind, test_len_loss
 
 def test_loop(model, epoch):
-    global best_ind, best_ipcw_ind, best_ind_sk, best_ipcw_ind_sk, best_epoch, best_model
+    global best_ind, best_ipcw_ind, best_ind_sk, best_ipcw_ind_sk, best_epoch, best_loss, best_model
     
+    optimizer.zero_grad()
     model.eval()
     
     curr_con_ind = torch.tensor(0.0)
@@ -319,13 +363,15 @@ def test_loop(model, epoch):
         
         curr_con_ind_ipcw_sk = concordance_index_ipcw(train_status_arr, test_status_arr, [val[0] for val in pred.detach().numpy()])[0]
     
-        if curr_con_ind_ipcw > best_ipcw_ind:
+        if loss < best_loss or best_loss < 0:
+        #if curr_con_ind_ipcw > best_ipcw_ind:
         #if curr_con_ind_ipcw_sk > best_ind_sk:
             #print(f"\nNew best model found, old Index: {best_ind:0.3f}, new Index: {curr_con_ind_ipcw:0.3f}")
             best_ind = curr_con_ind
             best_ipcw_ind = curr_con_ind_ipcw
             best_ind_sk = curr_con_ind_sk
             best_ipcw_ind_sk = curr_con_ind_ipcw_sk
+            best_loss = loss
             best_model.load_state_dict(copy.deepcopy(model.state_dict()))
             best_epoch = epoch+1
             
@@ -339,7 +385,7 @@ def test_loop(model, epoch):
             #print(f"\nNo new best model found, index to beat: {best_ind:0.3f}")
         
     
-    #curr_loss /= num_el
+    #curr_loss /= len(x)
     #curr_con_ind /= batch_num
     #curr_con_ind_ipcw /= batch_num
     return curr_loss, curr_con_ind, curr_con_ind_ipcw, curr_con_ind_sk, curr_con_ind_ipcw_sk
@@ -348,6 +394,8 @@ def test_loop(model, epoch):
 
 train_losses = []
 test_losses = []
+train_losses_all = []
+train_losses_test_len = []
 
 train_con_inds = []
 test_con_inds = []
@@ -357,12 +405,17 @@ train_con_ind_ipcws = []
 test_con_ind_ipcws = []
 test_con_ind_ipcws_sk = []
 
+train_inds_all = []
+train_inds_test_len = []
+
 for t in range(EPOCHS):
-    curr_train_loss, curr_train_con_ind, curr_train_con_ind_ipcw = train_loop(dataloader_train, cox_model, optimizer)
+    curr_train_loss, curr_train_con_ind, curr_train_con_ind_ipcw, train_all_ind, train_all_loss, train_test_len_ind, train_test_len_loss = train_loop(dataloader_train, cox_model, optimizer)
     curr_test_loss, curr_test_con_ind, curr_test_con_ind_ipcw, curr_test_con_ind_sk, curr_test_con_ind_ipcw_sk = test_loop(cox_model, t)
     
     train_losses.append(curr_train_loss)
     test_losses.append(curr_test_loss)
+    train_losses_all.append(train_all_loss)
+    train_losses_test_len.append(train_test_len_loss)
     
     train_con_inds.append(curr_train_con_ind)
     test_con_inds.append(curr_test_con_ind)
@@ -372,13 +425,16 @@ for t in range(EPOCHS):
     test_con_ind_ipcws.append(curr_test_con_ind_ipcw)
     test_con_ind_ipcws_sk.append(curr_test_con_ind_ipcw_sk)
     
+    train_inds_all.append(train_all_ind)
+    train_inds_test_len.append(train_test_len_ind)
+    
     if t % (EPOCHS // 20) == 0:
         print(f"\nEpoch {t+1}, Index to beat: {best_ipcw_ind:0.3f} ({best_ipcw_ind_sk:0.3f}), Best Epoch: {best_epoch}\n-------------------------------")
         #print(f"Model is best model: {compare_models(cox_model, best_model)}")
         #print(f"torchsurv Index: {curr_test_con_ind:0.3f}, sksurv Index: {curr_test_con_ind_sk:0.3f}")
-        print(f"Training loss: {curr_train_loss:0.3f}, Test loss: {curr_test_loss:0.3f}")
-        print(f"Concordance Index train: {curr_train_con_ind:0.3f},         IPCW Concordance Index train: {curr_train_con_ind_ipcw:0.3f}")
-        print(f"Concordance Index test:  {curr_test_con_ind:0.3f} ({curr_test_con_ind_sk:0.3f}), IPCW Concordance Index test:  {curr_test_con_ind_ipcw:0.3f} ({curr_test_con_ind_ipcw_sk:0.3f})")
+        print(f"Training loss: {curr_train_loss:0.6f} ({train_all_loss:0.6f}) ({train_test_len_loss:0.6f}), Test loss: {curr_test_loss:0.6f}, Best loss: {best_loss:0.6f}")
+        print(f"Concordance Index train: {curr_train_con_ind:0.3f},         IPCW Concordance Index train: {curr_train_con_ind_ipcw:0.3f} ({train_all_ind:0.3f}) ({train_test_len_ind:0.3f})")
+        print(f"Concordance Index test:  {curr_test_con_ind:0.3f} ({curr_test_con_ind_sk:0.3f}), IPCW Concordance Index test:  {curr_test_con_ind_ipcw:0.3f}         ({curr_test_con_ind_ipcw_sk:0.3f})")
         #print(f"Test IPCW Concordance Index with sksurv.metrics: {curr_test_con_ind_ipcw_sk:0.3f}")
 print('\n' + '-'*50)
 print(f"Done! The best epoch was {best_epoch}.")
@@ -387,12 +443,24 @@ print('-'*50)
 
 # %% Plot the training and test losses
 
-plot_losses(train_losses, test_losses, "Cox")
+title = "learning rate 1e-4"
+num = 100
+
+plot_losses(train_losses[:num], test_losses[:num], title, norm = True)
+#plot_losses(train_losses_all[:num], test_losses[:num], title, norm = True)
+#plot_losses(train_losses_test_len[:num], test_losses[:num], title, norm = True)
+#plot_losses(train_losses_test_len[:num], test_losses[:num], title, norm = False)
+
+# %% Plot the IPCW Index for train and test
+num = 50
+
+plot_losses(train_inds_all[:num], test_con_ind_ipcws[:num], title, norm = False)
+plot_losses(train_inds_test_len[:num], test_con_ind_ipcws[:num], title, norm = False)
 
 # %%
 
-df = pd.DataFrame([train_losses, test_losses], index = ['train', 'test']).transpose()
-df.to_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT\\saved_models_plots\\model5_data.csv")
+#df = pd.DataFrame([train_losses, test_losses], index = ['train', 'test']).transpose()
+#df.to_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\saved_models_plots\\model4_data.csv")
 
 # %% Lists with elements [CI, IPCW CI, IPCW CI SK] to see if it is better to copy state dict from best model or not and if yes if the metric from sksurv is better
 #repeat both methods 5 times with 50 iterations
@@ -412,7 +480,7 @@ c = [[0.727, 0.743, 0.695], [0.727, 0.740, 0.695], [0.728, 0.740, 0.697], [0.728
 # %% !!!ONLY RUN IF THE MODEL SHOULD GET SAVED!!!
 
 cox_model.load_state_dict(copy.deepcopy(best_model.state_dict()))
-torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model5.pth')
+torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model60.pth')
 
 # %% Check if the Conconcordance and IPCW indices obtained from the test_results method match the ones calculated during the training
 
@@ -421,7 +489,7 @@ test_model = NeuralNetwork()
 df_test = pd.DataFrame(test_x, columns = features)
 df_test.insert(0, "ID", [str(int(val)) for val in np.linspace(1, len(df_test), len(df_test))])
 
-a = test_results(test_model, data_dir + "\\saved_models\\model5.pth", df_test, features, "model_temp", return_df = True)
+a = test_results(test_model, data_dir + "\\saved_models\\model60.pth", df_test, features, "model_temp", return_df = True)
 pred_test = torch.tensor(a.risk_score).float()
 
 con = ConcordanceIndex()
@@ -440,4 +508,4 @@ final_df.insert(4, 'NSM', [len(final_mol_df[final_mol_df.ID == val]) for val in 
 
 test_model = NeuralNetwork()
 
-test_results(test_model, data_dir + "\\saved_models\\model5.pth", final_df, features, "model5")
+test_results(test_model, data_dir + "\\saved_models\\model60.pth", final_df, features, "model60")
