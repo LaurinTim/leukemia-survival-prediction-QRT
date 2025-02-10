@@ -196,7 +196,7 @@ model50:
 		Concordance Index: 0.695
 		IPCW Concordance Index: 0.676
 
-  	Obtained score from submission: -
+  	Obtained score from submission: 0.652
 
 model60: 
 
@@ -220,4 +220,4 @@ model60:
 		Concordance Index: 0.708
 		IPCW Concordance Index: 0.677
 
-  	Obtained score from submission: -
+  	Obtained score from submission: 0.660
