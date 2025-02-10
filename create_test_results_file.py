@@ -23,7 +23,7 @@ from torchsurv.stats.ipcw import get_ipcw
 def test_results(model, parameters_file, data, features, model_name, return_df = False):
     '''
     
-    A csv file for the submission is created at C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT\\submission_files\\{model_name}.csv.
+    A csv file for the submission is created at C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\submission_files\\{model_name}.csv.
     The first row is the header with the column names "ID" and "risk_score". "ID" is the patient ID and "risk_score" the output of the model.
 
     Parameters
@@ -64,7 +64,7 @@ def test_results(model, parameters_file, data, features, model_name, return_df =
         return df
     
     else:
-        data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT"
+        data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
         df.to_csv(data_dir + "\\submission_files\\" + model_name + ".csv", index = False)
         return
 

@@ -11,7 +11,7 @@ from torchsurv.loss.cox import neg_partial_log_likelihood
 from torchsurv.metrics.cindex import ConcordanceIndex
 from torchsurv.stats.ipcw import get_ipcw
 
-data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT"
+data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
 
 features = ['BM_BLAST', 'HB', 'PLT']
 

@@ -17,7 +17,7 @@ from torchsurv.loss import cox
 import warnings
 warnings.filterwarnings('ignore')
 
-data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT"
+data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
 
 features = ['BM_BLAST', 'HB', 'PLT']
 

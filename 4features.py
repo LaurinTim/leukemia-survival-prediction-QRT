@@ -18,7 +18,7 @@ from torchsurv.stats.ipcw import get_ipcw
 #IPCW Concordance Index from sksurv
 from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
 
-data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\Challenge Data QRT"
+data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
 
 features = ['BM_BLAST', 'HB', 'PLT', 'NSM']
 
