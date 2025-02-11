@@ -220,9 +220,7 @@ model60:
 		Concordance Index: 0.708
 		IPCW Concordance Index: 0.677
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-  	Obtained score from submission: -
+  	Obtained score from submission: 0.660
 
 model70: 
 
@@ -268,9 +266,3 @@ model80:
 		IPCW Concordance Index: 0.684
 
   	Obtained score from submission: -
-=======
-  	Obtained score from submission: 0.660
->>>>>>> 10395fbb9276961752a0fc77f518f0fe0454a259
-=======
-  	Obtained score from submission: 0.660
->>>>>>> 10395fbb9276961752a0fc77f518f0fe0454a259
