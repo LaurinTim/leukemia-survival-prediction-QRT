@@ -221,3 +221,48 @@ model60:
 		IPCW Concordance Index: 0.677
 
   	Obtained score from submission: -
+
+model70: 
+
+	4features.py was used to get this model
+	Use BM_BLAST, HB, PLT and number of Somatic mutations (NSM), 2000 epochs, learning rate 5e-5
+
+ 	Sequential:
+   		torch.nn.BatchNorm1d(4),
+		torch.nn.Linear(4, 32),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+		torch.nn.Linear(32, 64),
+		torch.nn.ReLU(),
+		torch.nn.Dropout(),
+		torch.nn.Linear(64, 1)
+
+	Test Data Indices calculated while training:
+		Concordance Index: 0.694
+		IPCW Concordance Index: 0.663
+
+  	Obtained score from submission: -
+
+model80: 
+
+	4features.py was used to get this model
+	Use BM_BLAST, HB, PLT and number of Somatic mutations (NSM), 2000 epochs, learning rate 5e-5
+
+ 	Sequential:
+   		torch.nn.BatchNorm1d(4),
+            	torch.nn.Linear(4, 32),
+            	torch.nn.ReLU(),
+            	torch.nn.Dropout(),
+            	torch.nn.Linear(32, 64),
+            	torch.nn.ReLU(),
+           	torch.nn.Dropout(),
+            	torch.nn.Linear(64, 128),
+            	torch.nn.ReLU(),
+            	torch.nn.Dropout(),
+            	torch.nn.Linear(128, 1)
+
+	Test Data Indices calculated while training:
+		Concordance Index: 0.695
+		IPCW Concordance Index: 0.684
+
+  	Obtained score from submission: -

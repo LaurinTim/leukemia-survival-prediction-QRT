@@ -44,8 +44,14 @@ else:
 
 # %% Code from https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py, creates a scatter plot with normalized losses for the training and test data
 
-def plot_losses(train_losses, test_losses, title: str = "Cox", norm = True) -> None:
-    x = np.linspace(1, len(train_losses), len(train_losses))
+def plot_losses(train_losses, test_losses, title: str = "Cox", norm = True, ran = None) -> None:
+    if ran == None:
+        x = np.linspace(1, len(train_losses), len(train_losses))
+    
+    else:
+        train_losses = train_losses[ran[0]:ran[1]]
+        test_losses = test_losses[ran[0]:ran[1]]
+        x = np.linspace(max(ran[0],0), min(ran[1], len(train_losses)+max(ran[0],0)), len(train_losses))
     
     if norm == True:
         train_losses = torch.stack(train_losses) / train_losses[0]
@@ -240,8 +246,8 @@ cox_model = NeuralNetwork()
 
 # %% Define learning rate, epoch and optimizer
 
-LEARNING_RATE = 1e-4
-EPOCHS = 200
+LEARNING_RATE = 5e-5
+EPOCHS = 3000
 optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 
 # %% Train and Test loops
@@ -428,7 +434,7 @@ for t in range(EPOCHS):
     train_inds_all.append(train_all_ind)
     train_inds_test_len.append(train_test_len_ind)
     
-    if t % (EPOCHS // 20) == 0:
+    if t % (EPOCHS // 30) == 0:
         print(f"\nEpoch {t+1}, Index to beat: {best_ipcw_ind:0.3f} ({best_ipcw_ind_sk:0.3f}), Best Epoch: {best_epoch}\n-------------------------------")
         #print(f"Model is best model: {compare_models(cox_model, best_model)}")
         #print(f"torchsurv Index: {curr_test_con_ind:0.3f}, sksurv Index: {curr_test_con_ind_sk:0.3f}")
@@ -443,24 +449,26 @@ print('-'*50)
 
 # %% Plot the training and test losses
 
-title = "learning rate 1e-4"
-num = 100
+title = "learning rate 5e-5"
+ns = 1000
+ne = 2000
 
-plot_losses(train_losses[:num], test_losses[:num], title, norm = True)
-#plot_losses(train_losses_all[:num], test_losses[:num], title, norm = True)
-#plot_losses(train_losses_test_len[:num], test_losses[:num], title, norm = True)
-#plot_losses(train_losses_test_len[:num], test_losses[:num], title, norm = False)
+plot_losses(test_losses, test_losses, title, norm = True, ran = [ns, ne])
+#plot_losses(train_losses_all, test_losses, title, norm = True, ran = [ns, ne])
+#plot_losses(train_losses_test_len, test_losses, title, norm = True, ran = [ns, ne])
+#plot_losses(train_losses_test_len, test_losses, title, norm = False, ran = [ns, ne])
 
 # %% Plot the IPCW Index for train and test
-num = 50
+#ns = 0
+#ne = 100
 
-plot_losses(train_inds_all[:num], test_con_ind_ipcws[:num], title, norm = False)
-plot_losses(train_inds_test_len[:num], test_con_ind_ipcws[:num], title, norm = False)
+plot_losses(train_inds_all, test_con_ind_ipcws, title, norm = False, ran = [ns, ne])
+plot_losses(train_inds_test_len, test_con_ind_ipcws, title, norm = False, ran = [ns, ne])
 
 # %%
 
-#df = pd.DataFrame([train_losses, test_losses], index = ['train', 'test']).transpose()
-#df.to_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\saved_models_plots\\model4_data.csv")
+df = pd.DataFrame([train_losses, test_losses], index = ['train', 'test']).transpose()
+df.to_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\saved_models_plots\\model80_data.csv")
 
 # %% Lists with elements [CI, IPCW CI, IPCW CI SK] to see if it is better to copy state dict from best model or not and if yes if the metric from sksurv is better
 #repeat both methods 5 times with 50 iterations
@@ -480,7 +488,7 @@ c = [[0.727, 0.743, 0.695], [0.727, 0.740, 0.695], [0.728, 0.740, 0.697], [0.728
 # %% !!!ONLY RUN IF THE MODEL SHOULD GET SAVED!!!
 
 cox_model.load_state_dict(copy.deepcopy(best_model.state_dict()))
-torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model60.pth')
+torch.save(cox_model.state_dict(), data_dir + '\\saved_models\\model80.pth')
 
 # %% Check if the Conconcordance and IPCW indices obtained from the test_results method match the ones calculated during the training
 
@@ -489,7 +497,7 @@ test_model = NeuralNetwork()
 df_test = pd.DataFrame(test_x, columns = features)
 df_test.insert(0, "ID", [str(int(val)) for val in np.linspace(1, len(df_test), len(df_test))])
 
-a = test_results(test_model, data_dir + "\\saved_models\\model60.pth", df_test, features, "model_temp", return_df = True)
+a = test_results(test_model, data_dir + "\\saved_models\\model80.pth", df_test, features, "model_temp", return_df = True)
 pred_test = torch.tensor(a.risk_score).float()
 
 con = ConcordanceIndex()
@@ -508,4 +516,4 @@ final_df.insert(4, 'NSM', [len(final_mol_df[final_mol_df.ID == val]) for val in 
 
 test_model = NeuralNetwork()
 
-test_results(test_model, data_dir + "\\saved_models\\model60.pth", final_df, features, "model60")
+test_results(test_model, data_dir + "\\saved_models\\model80.pth", final_df, features, "model80")
