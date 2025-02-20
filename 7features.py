@@ -198,6 +198,11 @@ test_len_x = torch.tensor(np.array(train_x)[test_len_dat])
 test_len_event = torch.tensor(np.array(train_event)[test_len_dat])
 test_len_time = torch.tensor(np.array(train_time)[test_len_dat])
 
+bad_seed = bool(train_time.max() < test_time.max())
+if bad_seed:
+    print('-'*100)
+    print('ERROR: THIS IS A BAD SEED, THE MAX TIME IN TRAIN IS SMALLER THAN IN TEST, PLEASE SPLIT DATA AGAIN')
+    print('-'*100)
 # %% Sanity check
 
 x, (event, time) = next(iter(dataloader_train))
