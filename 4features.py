@@ -198,6 +198,11 @@ test_len_x = torch.tensor(np.array(train_x)[test_len_dat])
 test_len_event = torch.tensor(np.array(train_event)[test_len_dat])
 test_len_time = torch.tensor(np.array(train_time)[test_len_dat])
 
+bad_seed = bool(train_time.max() < test_time.max())
+if bad_seed:
+    print('-'*100)
+    print('ERROR: THIS IS A BAD SEED, THE MAX TIME IN TRAIN IS SMALLER THAN IN TEST, PLEASE SPLIT DATA AGAIN')
+    print('-'*100)
 # %% Sanity check
 
 x, (event, time) = next(iter(dataloader_train))
@@ -226,7 +231,8 @@ class NeuralNetwork(torch.nn.Module):
             torch.nn.Linear(64, 128),
             torch.nn.ReLU(),
             torch.nn.Dropout(),
-            torch.nn.Linear(128, 1)
+            torch.nn.Linear(128, 1),
+            torch.nn.ReLU()
         )
 
     def forward(self, x):
@@ -246,8 +252,8 @@ cox_model = NeuralNetwork()
 
 # %% Define learning rate, epoch and optimizer
 
-LEARNING_RATE = 5e-5
-EPOCHS = 3000
+LEARNING_RATE = 1e-4
+EPOCHS = 30
 optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 
 # %% Train and Test loops
@@ -434,7 +440,7 @@ for t in range(EPOCHS):
     train_inds_all.append(train_all_ind)
     train_inds_test_len.append(train_test_len_ind)
     
-    if t % (EPOCHS // 30) == 0:
+    if t % (EPOCHS // 6) == 0:
         print(f"\nEpoch {t+1}, Index to beat: {best_ipcw_ind:0.3f} ({best_ipcw_ind_sk:0.3f}), Best Epoch: {best_epoch}\n-------------------------------")
         #print(f"Model is best model: {compare_models(cox_model, best_model)}")
         #print(f"torchsurv Index: {curr_test_con_ind:0.3f}, sksurv Index: {curr_test_con_ind_sk:0.3f}")
@@ -449,11 +455,11 @@ print('-'*50)
 
 # %% Plot the training and test losses
 
-title = "learning rate 5e-5"
-ns = 1000
-ne = 2000
+title = "learning rate 1e-4"
+ns = 0
+ne = 50
 
-plot_losses(test_losses, test_losses, title, norm = True, ran = [ns, ne])
+plot_losses(train_losses, test_losses, title, norm = True, ran = [ns, ne])
 #plot_losses(train_losses_all, test_losses, title, norm = True, ran = [ns, ne])
 #plot_losses(train_losses_test_len, test_losses, title, norm = True, ran = [ns, ne])
 #plot_losses(train_losses_test_len, test_losses, title, norm = False, ran = [ns, ne])
@@ -468,7 +474,7 @@ plot_losses(train_inds_test_len, test_con_ind_ipcws, title, norm = False, ran = 
 # %%
 
 df = pd.DataFrame([train_losses, test_losses], index = ['train', 'test']).transpose()
-df.to_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\saved_models_plots\\model80_data.csv")
+#df.to_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\saved_models_plots\\model90_data.csv")
 
 # %% Lists with elements [CI, IPCW CI, IPCW CI SK] to see if it is better to copy state dict from best model or not and if yes if the metric from sksurv is better
 #repeat both methods 5 times with 50 iterations
