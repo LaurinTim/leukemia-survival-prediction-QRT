@@ -18,6 +18,8 @@ from torchsurv.stats.ipcw import get_ipcw
 #IPCW Concordance Index from sksurv
 from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
 
+from tqdm import tqdm
+
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
 
 features = ['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES', 'NSM']
@@ -36,11 +38,11 @@ from create_test_results_file import test_results
 if any([torch.cuda.is_available(), torch.backends.mps.is_available()]):
     print("CUDA-enabled GPU/TPU is available.")
     BATCH_SIZE = 128  # batch size for training
-    #torch.set_default_device('cuda')
+    torch.set_default_device('cpu')
 else:
     print("No CUDA-enabled GPU found, using CPU.")
     BATCH_SIZE = 32  # batch size for training
-    #device = torch.device('cpu')
+    device = torch.device('cpu')
 
 # %% Code from https://github.com/Novartis/torchsurv/blob/main/docs/notebooks/helpers_introduction.py, creates a scatter plot with normalized losses for the training and test data
 
@@ -256,6 +258,9 @@ LEARNING_RATE = 1e-4
 EPOCHS = 30
 optimizer = torch.optim.Adam(cox_model.parameters(), lr=LEARNING_RATE)
 
+scheduler_step = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.6)
+#scheduler_plateau = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor = 0.5, patience=5)
+
 # %% Train and Test loops
 
 #global best_ind, best_model
@@ -420,9 +425,12 @@ test_con_ind_ipcws_sk = []
 train_inds_all = []
 train_inds_test_len = []
 
-for t in range(EPOCHS):
+for t in tqdm(range(EPOCHS)):
     curr_train_loss, curr_train_con_ind, curr_train_con_ind_ipcw, train_all_ind, train_all_loss, train_test_len_ind, train_test_len_loss = train_loop(dataloader_train, cox_model, optimizer)
     curr_test_loss, curr_test_con_ind, curr_test_con_ind_ipcw, curr_test_con_ind_sk, curr_test_con_ind_ipcw_sk = test_loop(cox_model, t)
+    
+    scheduler_step.step()
+    #scheduler_plateau.step(curr_test_loss)
     
     train_losses.append(curr_train_loss)
     test_losses.append(curr_test_loss)
@@ -442,6 +450,7 @@ for t in range(EPOCHS):
     
     if t % (EPOCHS // 6) == 0:
         print(f"\nEpoch {t+1}, Index to beat: {best_ipcw_ind:0.3f} ({best_ipcw_ind_sk:0.3f}), Best Epoch: {best_epoch}\n-------------------------------")
+        print(f"Current learning rate: {optimizer.param_groups[0]['lr']}")
         #print(f"Model is best model: {compare_models(cox_model, best_model)}")
         #print(f"torchsurv Index: {curr_test_con_ind:0.3f}, sksurv Index: {curr_test_con_ind_sk:0.3f}")
         print(f"Training loss: {curr_train_loss:0.6f} ({train_all_loss:0.6f}) ({train_test_len_loss:0.6f}), Test loss: {curr_test_loss:0.6f}, Best loss: {best_loss:0.6f}")
@@ -457,7 +466,7 @@ print('-'*50)
 
 title = "learning rate 1e-4"
 ns = 0
-ne = 50
+ne = 200
 
 plot_losses(train_losses, test_losses, title, norm = True, ran = [ns, ne])
 #plot_losses(train_losses_all, test_losses, title, norm = True, ran = [ns, ne])

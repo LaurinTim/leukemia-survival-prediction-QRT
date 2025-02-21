@@ -266,3 +266,28 @@ model80:
 		IPCW Concordance Index: 0.684
 
   	Obtained score from submission: -
+
+model90: 
+
+	7features_v2.py was used to get this model
+	Use 'BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES' and number of Somatic mutations (NSM), 1900 epochs, learning rate 1e-4 to 1e-5, use cuda cores, use batch size 256
+
+ 	Sequential:
+            torch.nn.BatchNorm1d(7),
+            torch.nn.Linear(7, 28),
+            torch.nn.Tanh(),
+            torch.nn.Dropout(),
+            torch.nn.Linear(28, 56),
+            torch.nn.Tanh(),
+            torch.nn.Dropout(),
+            torch.nn.Linear(56, 112),
+            torch.nn.Tanh(),
+            torch.nn.Dropout(),
+            torch.nn.Linear(112, 1),
+            torch.nn.Sigmoid()
+
+	Test Data Indices calculated while training:
+		Concordance Index: 0.705
+		IPCW Concordance Index: 0.685
+
+  	Obtained score from submission: 0.646 :(((
