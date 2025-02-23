@@ -4,6 +4,7 @@ import random
 import matplotlib.pyplot as plt
 from sksurv.linear_model import CoxPHSurvivalAnalysis
 import torch
+import torch.nn as nn
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
@@ -11,6 +12,7 @@ from sklearn.feature_selection import SelectKBest
 from sklearn.pipeline import Pipeline
 from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import OrdinalEncoder
 from tqdm import tqdm
 
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -32,6 +34,7 @@ random_seed = 2
 
 np.random.seed(random_seed)
 random.seed(random_seed)
+torch.manual_seed(random_seed)
 
 # %%
 
@@ -45,6 +48,8 @@ id_cl = np.array(data_cl.ID)
 data_cl = data_cl[features]
 data_cl = data_cl.fillna(0) #shape = (3173, 6)
 
+# %%
+
 data_mol = pd.read_csv(data_dir+'\\X_train\\molecular_train.csv')
 data_mol = data_mol.loc[data_mol['ID'].isin(idp)]
 
@@ -54,16 +59,60 @@ vaf_mol = scaler.fit_transform(vaf_mol.reshape(-1,1)).reshape(1,-1)[0]*5
 
 id_mol = np.array(data_mol.ID)
 data_mol = data_mol[features_mol]
-data_mol = pd.get_dummies(data_mol) #shape = (10545, 160)
+
+enc = OrdinalEncoder()
+chroms = enc.fit_transform(data_mol[['CHR']])
+chroms = np.nan_to_num(chroms, nan=-1)
+data_mol = data_mol.drop(columns=['CHR'])
+
+# %%
+
+unique_genes = sorted(data_mol['GENE'].unique())
+gene_to_idx = {gene: idx for idx, gene in enumerate(unique_genes, start=1)}
+gene_to_idx['UNKNOWN'] = 0
+#data_mol['gene_index'] = data_mol['GENE'].map(lambda g: gene_to_idx.get(g, 0))
+
+class GeneEmbeddingModel(nn.Module):
+    def __init__(self, num_genes, embedding_dim):
+        super(GeneEmbeddingModel, self).__init__()
+        self.embedding = nn.Embedding(num_genes, embedding_dim)
+        
+    def forward(self, gene_idx):
+        return self.embedding(gene_idx)
+    
+embedding_dim = 50
+num_genes = len(unique_genes) + 1
+gene_model = GeneEmbeddingModel(num_genes, embedding_dim)
+with torch.no_grad():
+    gene_embeddings = gene_model.embedding.weight.cpu().numpy()
+    
+def get_gene_embedding(patient_genes, model, vector_size=50):
+    """Averages embeddings of all mutated genes for a patient."""
+    indices = [gene_to_idx.get(g, 0) for g in patient_genes]
+    vectors = [gene_embeddings[idx] for idx in indices]
+    
+    if len(vectors)>0:
+        return np.mean(vectors, axis=0)
+    else:
+        return np.zeros(vector_size)
+    
+mol_gene = pd.DataFrame(embedding_dim, index = np.arange(len(idp)), columns=['GENE:' + str(i) for i in range(embedding_dim)])
+
+for i in tqdm(range(len(idp))):
+    curr_mol = data_mol[id_mol == idp[i]]
+    curr_genes = np.array(curr_mol['GENE'])
+    mol_gene.iloc[i] = get_gene_embedding(curr_genes, gene_model, vector_size=embedding_dim)
+
+data_mol.drop(columns=['GENE'])
+
+# %%
+
+data_mol = pd.get_dummies(data_mol) #shape = (10545, 137)
 data_mol_sum = data_mol.sum(axis=0)
-min_occurences = 83
+min_occurences = 5
 sparse_features = data_mol.columns[(data_mol_sum < min_occurences)]
 data_mol = data_mol.drop(columns=sparse_features)
-
-vaf_thr = 0.25
-#data_mol = data_mol.iloc[vaf_mol>vaf_thr]
-#id_mol = id_mol[vaf_mol>vaf_thr]
-#vaf_mol = vaf_mol[vaf_mol>vaf_thr]
+data_mol.insert(0, 'CHR', chroms)
 
 # %%
 
@@ -72,9 +121,10 @@ data = pd.DataFrame(0, index=np.arange(len(idp)), columns=list(data_cl.columns)+
 for i in tqdm(range(len(idp))):
     curr_cl = data_cl[id_cl == idp[i]].reset_index(drop=True)
     curr_mol = data_mol[id_mol == idp[i]]
+    curr_mol_chrom = np.array(curr_mol['CHR'])
     #curr_vaf_mol = np.array(np.sum(vaf_mol[id_mol == idp[i]]))
-    #curr_mol = curr_mol.sum(0).to_frame().transpose().reset_index(drop=True)
-    curr_mol = (curr_mol.T * vaf_mol[id_mol == idp[i]]).T.sum(0).to_frame().transpose()
+    curr_mol = curr_mol.sum(0).to_frame().transpose().reset_index(drop=True)
+    #curr_mol = (curr_mol.T * vaf_mol[id_mol == idp[i]]).T.sum(0).to_frame().transpose()
     #if i % 100 == 0: print(np.sum(np.array(curr_mol)))
     #data.iloc[i] = np.append(np.array(curr_cl), np.append(np.array(curr_mol), curr_vaf_mol))
     data.iloc[i] = np.append(np.array(curr_cl), np.array(curr_mol))
