@@ -28,9 +28,11 @@ os.chdir(data_dir)
 #import method to create test_results file
 from create_test_results_file import test_results
 
+from utils import fit_and_score_features
+
 # %%
 
-random_seed = 2
+random_seed = 1
 
 np.random.seed(random_seed)
 random.seed(random_seed)
@@ -86,7 +88,7 @@ gene_model = GeneEmbeddingModel(num_genes, embedding_dim)
 with torch.no_grad():
     gene_embeddings = gene_model.embedding.weight.cpu().numpy()
     
-def get_gene_embedding(patient_genes, model, vector_size=50):
+def get_gene_embedding(patient_genes, vector_size=50):
     """Averages embeddings of all mutated genes for a patient."""
     indices = [gene_to_idx.get(g, 0) for g in patient_genes]
     vectors = [gene_embeddings[idx] for idx in indices]
@@ -101,7 +103,7 @@ mol_gene = pd.DataFrame(embedding_dim, index = np.arange(len(idp)), columns=['GE
 for i in tqdm(range(len(idp))):
     curr_mol = data_mol[id_mol == idp[i]]
     curr_genes = np.array(curr_mol['GENE'])
-    mol_gene.iloc[i] = get_gene_embedding(curr_genes, gene_model, vector_size=embedding_dim)
+    mol_gene.iloc[i] = get_gene_embedding(curr_genes, vector_size=embedding_dim)
 
 data_mol.drop(columns=['GENE'])
 
@@ -152,6 +154,14 @@ preds = cox.predict(X_val)
 ind = concordance_index_censored(y_val['status'], y_val['time'], preds)[0]
 indp = concordance_index_ipcw(y_train, y_val, preds)[0]
 print(min_occurences, ind, indp)
+
+# %%
+
+scores0 = fit_and_score_features(X_train, y_train)
+
+# %%
+
+vals0 = pd.Series(scores0, index=data.columns).sort_values(ascending=False)
 
 # %%
 
