@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import torch
 from sksurv.linear_model import CoxPHSurvivalAnalysis
 from tqdm import tqdm
+import random
+
+from sklearn.preprocessing import OrdinalEncoder
 
 #Directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -186,6 +189,11 @@ def fit_and_score_features(X, y):
         m.fit(Xj, y)
         scores[j] = m.score(Xj, y)
     return scores
+
+def set_random_seed(random_seed) -> None:
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+    torch.manual_seed(random_seed)
     
 ###################################################################################################
 #Create a model for the gene embeddings and get a function mapping genes to their embeddings
@@ -416,9 +424,88 @@ def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_tr
             effect_survival_map[effect] = kmf.median_survival_time_
     
     return effect_survival_map
+# %%
 
+file_status = data_dir+'\\target_train.csv' #containts information about the status of patients, used as training target
+file_clinical = data_dir+'\\X_train\\clinical_train.csv' #contains clinical information of patients used for training
+file_molecular = data_dir+'\\X_train\\molecular_train.csv' #contains molecular information of patients used for training
+
+# %%
+
+###################################################################################################
+#Commands to get X_train, y_train from files
+###################################################################################################
+#maybe some columns should not be set to the median value if nan, eg. VAF, check this later
+#in Dataset.get_encoded_chromosomes nan values are set to -1, check if it makes a difference to set this to 0
+
+class Dataset():
+    def __init__(self, status_file, clinical_file, molecular_file, clinical_file_test=None, molecular_file_test=None, clinical_features=['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES'], gene_embedding_dim=50):
+        self.status_file = status_file
+        self.clinical_file = clinical_file
+        self.molecular_file = molecular_file
+        
+        self.clinical_features = clinical_features
+        self.gene_embedding_dim = gene_embedding_dim
+        
+        self.status_df = pd.read_csv(status_file).dropna(subset=["OS_YEARS", "OS_STATUS"])
+        self.patient_ids = np.array(self.status_df.loc[:,"ID"])
+        
+        self.clinical_df = pd.read_csv(clinical_file)
+        self.clinical_df = self.__valid_patients_df(self.clinical_df)
+        self.clinical_id = np.array(self.clinical_df.loc[:,"ID"])
+        self.clinical_df = self.__fillna_df(self.clinical_df, ["BM_BLAST", "WBC", "ANC", "MONOCYTES", "HB", "PLT"])
+        
+        self.molecular_df = pd.read_csv(molecular_file)
+        self.molecular_df = self.__valid_patients_df(self.molecular_df)
+        self.molecular_id = np.array(self.molecular_df.loc[:,"ID"])
+        self.molecular_df = self.__fillna_df(self.molecular_df, ["START", "END", "VAF", "DEPTH"])
+        self.vaf = np.array(self.molecular_df.loc[:,"VAF"])
+        
+        self.clinical_file_test = clinical_file_test
+        self.molecular_file_test = molecular_file_test
+        
+        self.__get_chromosome_encoder()
+        self.__get_unique_genes()
+        self.__get_gene_model(self.gene_embedding_dim)
+        
+                
+    def __call__(self):
+        if self.clinical_file_test==None:
+            print("Dataset containing training data.")
+        else:
+            print("Dataset containing training and test data.")
+            
+    def __valid_patients_df(self, df):
+        return_df = df[df.loc[:,"ID"].isin(self.patient_ids)]
+        return return_df
     
+    def __fillna_df(self, df, columns):
+        return_df = df.fillna({col: df[col].median() for col in df.select_dtypes(include=['float']).columns})
+        return return_df
     
+    def __get_chromosome_encoder(self):
+        encoder = OrdinalEncoder()
+        self.chromosome_encoder = encoder.fit(np.array(self.molecular_df.loc[:,"CHR"]).reshape(-1,1))
+    
+    def get_encoded_chromosomes(self, chromosomes):
+        encoded_chromosomes = self.chromosome_encoder.fit(chromosomes)
+        encoded_chromosomes = np.nan_to_num(encoded_chromosomes, nan=-1)
+        return encoded_chromosomes
+    
+    def __get_unique_genes(self) -> None:
+        self.unique_genes = sorted(self.molecular_df['GENE'].unique())
+        
+    def __get_gene_model(self, embedding_dim) -> None:
+        #number of different genes, the +1 comes from cases where the gene is not known
+        num_genes = len(self.unique_genes) + 1
+        
+        #get model
+        self.gene_model = GeneEmbeddingModel(num_genes, embedding_dim)
+                    
+# %%
+
+tst = Dataset(file_status, file_clinical, file_molecular)
+        
     
     
     

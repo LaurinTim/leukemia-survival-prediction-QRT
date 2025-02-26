@@ -105,7 +105,7 @@ for i in tqdm(range(len(idp))):
     curr_genes = np.array(curr_mol['GENE'])
     mol_gene.iloc[i] = get_gene_embedding(curr_genes, vector_size=embedding_dim)
 
-data_mol.drop(columns=['GENE'])
+#data_mol = data_mol.drop(columns=['GENE'])
 
 # %%
 

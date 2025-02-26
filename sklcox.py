@@ -28,10 +28,11 @@ from create_test_results_file import test_results
 
 # %%
 
-random_seed = 2
+random_seed = 1
 
 np.random.seed(random_seed)
 random.seed(random_seed)
+torch.manual_seed(random_seed)
 
 # %%
 
@@ -56,7 +57,7 @@ id_mol = np.array(data_mol.ID)
 data_mol = data_mol[features_mol]
 data_mol = pd.get_dummies(data_mol) #shape = (10545, 160)
 data_mol_sum = data_mol.sum(axis=0)
-min_occurences = 83
+min_occurences = 5
 sparse_features = data_mol.columns[(data_mol_sum < min_occurences)]
 data_mol = data_mol.drop(columns=sparse_features)
 
@@ -73,8 +74,8 @@ for i in tqdm(range(len(idp))):
     curr_cl = data_cl[id_cl == idp[i]].reset_index(drop=True)
     curr_mol = data_mol[id_mol == idp[i]]
     #curr_vaf_mol = np.array(np.sum(vaf_mol[id_mol == idp[i]]))
-    #curr_mol = curr_mol.sum(0).to_frame().transpose().reset_index(drop=True)
-    curr_mol = (curr_mol.T * vaf_mol[id_mol == idp[i]]).T.sum(0).to_frame().transpose()
+    curr_mol = curr_mol.sum(0).to_frame().transpose().reset_index(drop=True)
+    #curr_mol = (curr_mol.T * vaf_mol[id_mol == idp[i]]).T.sum(0).to_frame().transpose()
     #if i % 100 == 0: print(np.sum(np.array(curr_mol)))
     #data.iloc[i] = np.append(np.array(curr_cl), np.append(np.array(curr_mol), curr_vaf_mol))
     data.iloc[i] = np.append(np.array(curr_cl), np.array(curr_mol))

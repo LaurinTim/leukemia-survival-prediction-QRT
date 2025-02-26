@@ -11,7 +11,7 @@ from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
 from sklearn.feature_selection import SelectKBest
 from sklearn.pipeline import Pipeline
 from sklearn.decomposition import TruncatedSVD
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import OrdinalEncoder
 from tqdm import tqdm
 from operator import itemgetter
@@ -36,15 +36,12 @@ features_mol = ['CHR', 'GENE', 'EFFECT']
 import os
 os.chdir(data_dir)
 
-#import method to create test_results file
-from create_test_results_file import test_results
-
 #import commands from utils
 from utils import get_gene_embeddings, get_gene_map, get_gene_embedding, effect_to_survival_map, fit_and_score_features
 
 # %% set random seed of numpy, random and pytorch
 
-random_seed = 1
+random_seed = 2
 
 np.random.seed(random_seed)
 random.seed(random_seed)
@@ -88,6 +85,11 @@ data_mol = pd.read_csv(file_molecular)
 data_mol = data_mol.loc[data_mol['ID'].isin(idp)]
 #array containing 'ID' of all valid patients in data_mol
 id_mol = np.array(data_mol.ID)
+#array containing 'VAF' of all valid patients in data_mol
+vaf = np.nan_to_num(np.array(data_mol.VAF), nan=0.0).reshape(-1, 1)
+#take the log of vaf and scale it using StandardScaler
+scaler = StandardScaler()
+scaled_vaf = scaler.fit_transform(np.log(vaf+1e-4))
 #only keep columns defined in features_mol in data_mol
 data_mol = data_mol[['ID'] + features_mol] #shape=(10545, 3)
 
@@ -105,7 +107,7 @@ data_mol = data_mol.drop(columns=['CHR'])
 # %% Use embeddings to represent the different genes in data_mol["GENE"]
 
 #dimension of embeddings
-embedding_dim = 30
+embedding_dim = 50
 
 #dictionary that maps the genes in data_mol['GENE'] to the integers from 0 to the number of unique genes where 0 is assigned is no gene is specified in data_mol['GENE']
 gene_to_idx = get_gene_map(file_molecular, file_status)
@@ -134,7 +136,7 @@ data_mol = data_mol.drop(columns=['GENE'])
 effects_survival_map = effect_to_survival_map(file_molecular, file_status)
 
 #array filled with zeros in which to put the averaged survival time from all effects that a patient has
-mol_effect = np.zeros((len(idp), 1))
+mol_effect = np.zeros((len(idp), 2))
 
 #if a patient has no somatic mutations set the corresponding element in mol_effect to the median survival time of all patients
 global_median_survival = np.median(data_st["OS_YEARS"]) #np.median(data_st.loc[data_st["OS_STATUS"]== 0]["OS_YEARS"])
@@ -148,12 +150,16 @@ for i in tqdm(range(len(idp))):
     #check if the current patient has at least 1 effect
     if len(curr_effects)>0:
         #get tuple (length=len(curr_effects)) with the survival times associated with the elements of curr_effects
-        curr_survival = itemgetter(*curr_effects)(effects_survival_map)
+        curr_survival = np.array(itemgetter(*curr_effects)(effects_survival_map)).reshape(-1, 1)
+        #get the values of vaf for the current patient and use these as weights for the corresponding effects
+        curr_vaf = vaf[id_mol==curr_patient_id]
+        #normalize the weights
+        curr_vaf = (curr_vaf/np.sum(curr_vaf)) if np.sum(curr_vaf>0) else 1
         #set mol_effect[i] to the average of curr_survival
-        mol_effect[i] = np.average(curr_survival)
+        mol_effect[i] = [np.average(curr_survival*curr_vaf), len(curr_effects)]
     else:
         #if the current patient has no effects set mol_effect[i] to the median survival time of all patients
-        mol_effect[i] = global_median_survival
+        mol_effect[i] = [global_median_survival, 0]
 
 # %% get the input for CoxPHSurvivalAnalysis
 
@@ -189,8 +195,27 @@ scores = fit_and_score_features(X_train, y_train)
 
 # %%
 
-vals = pd.Series(scores, index=features+["Effect_survival"]+["GENE::"+str(i) for i in range(embedding_dim)]).sort_values(ascending=False)
+vals = pd.Series(scores, index=features+["Effect_survival", "number_of_mutations"]+["GENE::"+str(i) for i in range(embedding_dim)]).sort_values(ascending=False)
 
+# %% Use one hot encoding for the different effects
+
+data_mol = pd.get_dummies(data_mol, columns=['EFFECT'])
+
+min_occurences = 5
+data_mol = data_mol.drop(columns=['ID'])
+data_mol_sum = np.sum(data_mol, axis=0)
+sparse_features = data_mol.columns[(data_mol_sum < min_occurences)]
+data_mol = data_mol.drop(columns=sparse_features)
+
+mol_effect = np.zeros((idp.shape[0], data_mol.shape[1]))
+
+for i in tqdm(range(len(idp))):
+    #ID of current patient
+    curr_patient_id = idp[i]
+    #all effects of the current patient
+    curr_mol = data_mol.iloc[id_mol == curr_patient_id]
+    #sum over the effects and set mol_effect[i] to this
+    mol_effect[i] = np.array(np.sum(curr_mol, axis=0))
 
 
 
