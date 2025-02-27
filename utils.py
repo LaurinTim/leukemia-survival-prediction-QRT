@@ -11,6 +11,8 @@ import torch
 from sksurv.linear_model import CoxPHSurvivalAnalysis
 from tqdm import tqdm
 import random
+from operator import itemgetter
+from sklearn.model_selection import train_test_split
 
 from sklearn.preprocessing import OrdinalEncoder
 
@@ -426,6 +428,9 @@ def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_tr
     return effect_survival_map
 # %%
 
+from sksurv.linear_model import CoxPHSurvivalAnalysis
+from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
+
 file_status = data_dir+'\\target_train.csv' #containts information about the status of patients, used as training target
 file_clinical = data_dir+'\\X_train\\clinical_train.csv' #contains clinical information of patients used for training
 file_molecular = data_dir+'\\X_train\\molecular_train.csv' #contains molecular information of patients used for training
@@ -439,15 +444,17 @@ file_molecular = data_dir+'\\X_train\\molecular_train.csv' #contains molecular i
 #in Dataset.get_encoded_chromosomes nan values are set to -1, check if it makes a difference to set this to 0
 
 class Dataset():
-    def __init__(self, status_file, clinical_file, molecular_file, clinical_file_test=None, molecular_file_test=None, clinical_features=['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES'], gene_embedding_dim=50):
+    def __init__(self, status_file, clinical_file, molecular_file, clinical_file_test=None, molecular_file_test=None, 
+                 clinical_features=['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES'], gene_embedding_dim=50, chromosomes_min_occurences=5):
         self.status_file = status_file
         self.clinical_file = clinical_file
         self.molecular_file = molecular_file
         
         self.clinical_features = clinical_features
         self.gene_embedding_dim = gene_embedding_dim
+        self.chromosomes_min_occurences = chromosomes_min_occurences
         
-        self.status_df = pd.read_csv(status_file).dropna(subset=["OS_YEARS", "OS_STATUS"])
+        self.status_df = pd.read_csv(status_file).dropna(subset=["OS_YEARS", "OS_STATUS"]).reset_index(drop=True)
         self.patient_ids = np.array(self.status_df.loc[:,"ID"])
         
         self.clinical_df = pd.read_csv(clinical_file)
@@ -464,9 +471,12 @@ class Dataset():
         self.clinical_file_test = clinical_file_test
         self.molecular_file_test = molecular_file_test
         
-        self.__get_chromosome_encoder()
+        #self.__get_chromosome_encoder()
         self.__get_unique_genes()
-        self.__get_gene_model(self.gene_embedding_dim)
+        self.__get_gene_model()
+        self.__get_gene_embeddings()
+        self.__get_gene_map()
+        self.__get_effects_to_survival_map()
         
                 
     def __call__(self):
@@ -476,45 +486,257 @@ class Dataset():
             print("Dataset containing training and test data.")
             
     def __valid_patients_df(self, df):
-        return_df = df[df.loc[:,"ID"].isin(self.patient_ids)]
+        return_df = df[df.loc[:,"ID"].isin(self.patient_ids)].reset_index(drop=True)
         return return_df
     
     def __fillna_df(self, df, columns):
-        return_df = df.fillna({col: df[col].median() for col in df.select_dtypes(include=['float']).columns})
+        #return_df = df.fillna({col: df[col].median() for col in df.select_dtypes(include=['float']).columns})
+        return_df = df.fillna({col: 0 for col in df.select_dtypes(include=['float']).columns if col not in ["CHR"]})
         return return_df
     
-    def __get_chromosome_encoder(self):
-        encoder = OrdinalEncoder()
-        self.chromosome_encoder = encoder.fit(np.array(self.molecular_df.loc[:,"CHR"]).reshape(-1,1))
+    def clinical_transformer(self):
+        clinical_transformed = pd.DataFrame(0, index=np.arange(self.patient_ids.shape[0]), columns=self.clinical_features)
+        
+        for feature in self.clinical_features:
+            curr_feature_df = self.clinical_df.loc[:,feature]
+            #curr_feature_median = curr_feature_df.median()
+            #curr_feature_df = curr_feature_df.fillna(value = curr_feature_median)
+            clinical_transformed.loc[:,feature] = curr_feature_df
+        
+        return clinical_transformed
     
-    def get_encoded_chromosomes(self, chromosomes):
-        encoded_chromosomes = self.chromosome_encoder.fit(chromosomes)
-        encoded_chromosomes = np.nan_to_num(encoded_chromosomes, nan=-1)
-        return encoded_chromosomes
+    def __get_unique_chromosomes(self) -> None:
+        self.unique_chromosomes = sorted(self.molecular_df["CHR"].unique())
+    
+    def __get_chromosome_map(self) -> None:        
+        #create map that maps the unique genes to the integers 1 to len(unique_genes)
+        self.chromosome_to_idx = {chromosome: idx for idx, chromosome in enumerate(self.unique_chromosomes, start=1)}
+        
+        #if no gene is specified in data_molecular it is mapped to 0
+        self.chromosome_to_idx["UNKNOWN"] = 0
+    
+    def chromosomes_transformer(self):
+        chrom_onehot = pd.get_dummies(self.molecular_df["CHR"], prefix="CHR")
+        chromosomes_transformed = pd.DataFrame(0, index = np.arange(self.patient_ids.shape[0]), columns=["CHR:"+str(i) for i in np.arange(23)])
+        
+        for i in range(self.patient_ids.shape[0]):
+            curr_patient_id = self.patient_ids[i]
+            curr_onehot = chrom_onehot.loc[self.molecular_id==curr_patient_id]
+            curr_onehot_sum = np.array(np.sum(curr_onehot, axis=0))
+            chromosomes_transformed.iloc[i] = curr_onehot_sum
+            
+        chromosomes_transformed_sum = np.sum(chromosomes_transformed, axis=0)
+        sparse_features = chromosomes_transformed.columns[(chromosomes_transformed_sum < self.chromosomes_min_occurences)]
+        chromosomes_transformed = chromosomes_transformed.drop(columns=sparse_features)
+        
+        return chromosomes_transformed
     
     def __get_unique_genes(self) -> None:
         self.unique_genes = sorted(self.molecular_df['GENE'].unique())
         
-    def __get_gene_model(self, embedding_dim) -> None:
+    def __get_gene_model(self) -> None:
         #number of different genes, the +1 comes from cases where the gene is not known
         num_genes = len(self.unique_genes) + 1
         
         #get model
-        self.gene_model = GeneEmbeddingModel(num_genes, embedding_dim)
-                    
+        self.gene_model = GeneEmbeddingModel(num_genes, self.gene_embedding_dim)
+        
+    def __get_gene_embeddings(self) -> None:        
+        #get the arguments of the model for the gene embeddings
+        with torch.no_grad():
+            self.gene_embeddings = self.gene_model.embedding.weight.cpu().numpy()
+            
+    def __get_gene_map(self) -> None:        
+        #create map that maps the unique genes to the integers 1 to len(unique_genes)
+        self.gene_to_idx = {gene: idx for idx, gene in enumerate(self.unique_genes, start=1)}
+        
+        #if no gene is specified in data_molecular it is mapped to 0
+        self.gene_to_idx["UNKNOWN"] = 0
+        
+    def get_gene_embedding(self, patient_genes):
+        #if patient_genes is empty return array containing zeros, else return the mean of the embeddings
+        if len(patient_genes)==0:
+            return np.zeros(self.gene_embedding_dim)
+            
+        #get the indices corresponding to the genes
+        indices = [self.gene_to_idx.get(g, 0) for g in patient_genes]
+        
+        #get the embeddings of the indices
+        vectors = [self.gene_embeddings[idx] for idx in indices]
+        
+        return np.mean(vectors, axis=0)
+    
+    def genes_transformer(self):
+        genes_transformed = np.zeros((self.patient_ids.shape[0], self.gene_embedding_dim))
+        
+        for i in range(self.patient_ids.shape[0]):
+            curr_patient_id = self.patient_ids[i]
+            curr_molecular = self.molecular_df.loc[self.molecular_id==curr_patient_id]
+            curr_genes = np.array(curr_molecular.loc[:,"GENE"])
+            genes_transformed[i] = self.get_gene_embedding(curr_genes)
+            
+        genes_transformed = pd.DataFrame(genes_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["GENE:"+str(i) for i in range(self.gene_embedding_dim)])
+        
+        return genes_transformed
+    
+    def get_gene_embedding1(self, patient_genes, weights):
+        #if patient_genes is empty return array containing zeros, else return the mean of the embeddings
+        if len(patient_genes)==0:
+            return np.zeros(self.gene_embedding_dim)
+            
+        #get the indices corresponding to the genes
+        indices = [self.gene_to_idx.get(g, 0) for g in patient_genes]
+                
+        #get the embeddings of the indices
+        vectors = [self.gene_embeddings[idx]*weights[i] for idx,i in zip(indices,range(len(weights)))]
+        
+        return np.mean(vectors, axis=0)
+    
+    def genes_transformer1(self):
+        genes_transformed = np.zeros((self.patient_ids.shape[0], self.gene_embedding_dim))
+        
+        for i in range(self.patient_ids.shape[0]):
+            curr_patient_id = self.patient_ids[i]
+            curr_molecular = self.molecular_df.loc[self.molecular_id==curr_patient_id]
+            curr_genes = np.array(curr_molecular.loc[:,"GENE"])
+            #get the values of vaf for the current patient and use these as weights for the corresponding effects
+            curr_vaf = self.vaf[self.molecular_id==curr_patient_id]
+            #normalize the weights
+            curr_vaf = (curr_vaf/np.sum(curr_vaf)) if np.sum(curr_vaf>0) else np.array([1])
+            genes_transformed[i] = self.get_gene_embedding(curr_genes, curr_vaf)
+            
+        genes_transformed = pd.DataFrame(genes_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["GENE:"+str(i) for i in range(self.gene_embedding_dim)])
+        
+        return genes_transformed
+    
+    def __get_effects_to_survival_map(self) -> None:
+        #merge data_molecular and data_status on 'ID'
+        comb_df = self.molecular_df.merge(self.status_df, on='ID', how='left')
+        
+        #use lifelines.KaplanMeierFitter to account for the censoring when evaluating the map
+        kmf = KaplanMeierFitter()
+        self.effects_survival_map = {}
+        
+        #use groupby to create a tuple for each unique effect containing (effect name, data_molecular[data_molecular['EFFECT] == efect name]) which get passed on to loop as effect and subset
+        for effect, subset in comb_df.groupby("EFFECT"):
+            #use Kaplan-Meier estimate using subset["OS_YEARS"] as durations and subset["OS_STATUS"] for the censoring
+            kmf.fit(durations=subset["OS_YEARS"], event_observed=subset["OS_STATUS"])
+            #check if kmf can calculate the median (it cannot if subset has to few values from patients with status=1, this is the case for the the effect "inframe_variant")
+            if kmf.median_survival_time_ == np.inf: #kmf cannot compute the median
+                #set the value in the map for the current effect to the max survival time in subset
+                self.effects_survival_map[effect] = np.float64(np.max(subset["OS_YEARS"]))
+            else:
+                #set the value in the map for the current effect to the median survival time obtained using the Kaplan Meier estimate
+                self.effects_survival_map[effect] = kmf.median_survival_time_    
+    
+    def effects_transformer(self):
+        effects_transformed = np.zeros((self.patient_ids.shape[0], 2))
+        
+        #if a patient has no somatic mutations set the corresponding element in mol_effect to the median survival time of all patients
+        global_median_survival = np.median(self.status_df["OS_YEARS"]) #np.median(data_st.loc[data_st["OS_STATUS"]== 0]["OS_YEARS"])
+        
+        for i in range(self.patient_ids.shape[0]):
+            curr_patient_id = self.patient_ids[i]
+            curr_molecular = self.molecular_df.loc[self.molecular_id==curr_patient_id]
+            curr_effects = np.array(curr_molecular.loc[:,"EFFECT"])
+            if len(curr_effects)>0:
+                #get tuple (length=len(curr_effects)) with the survival times associated with the elements of curr_effects
+                curr_survival = np.array(itemgetter(*curr_effects)(self.effects_survival_map))
+                #get the values of vaf for the current patient and use these as weights for the corresponding effects
+                curr_vaf = self.vaf[self.molecular_id==curr_patient_id]
+                #normalize the weights
+                curr_vaf = (curr_vaf/np.sum(curr_vaf)) if np.sum(curr_vaf>0) else np.array([1])
+                #set mol_effect[i] to the average of curr_survival
+                effects_transformed[i] = [np.average(curr_survival*curr_vaf), len(curr_effects)]
+            else:
+                #if the current patient has no effects set mol_effect[i] to the median survival time of all patients
+                effects_transformed[i] = [global_median_survival, 0]
+                
+        effects_transformed = pd.DataFrame(effects_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["EFFECT_TRANSFORMED", "NUMBER_OF_MUTATIONS"])
+        
+        return effects_transformed
+    
+    def molecular_transformer(self):
+        chromosomes_transformed = self.chromosomes_transformer().reset_index(drop=True)
+        effects_transformed = self.effects_transformer().reset_index(drop=True)
+        genes_transformed = self.genes_transformer().reset_index(drop=True)
+        
+        molecular_transformed = pd.concat([effects_transformed, chromosomes_transformed, genes_transformed], axis=1)
+        #molecular_transformed = pd.concat([effects_transformed, genes_transformed], axis=1)
+        
+        return molecular_transformed
+    
+    def train_data_transformed(self):
+        clinical_transformed = self.clinical_transformer().reset_index(drop=True)
+        molecular_transformed = self.molecular_transformer().reset_index(drop=True)
+        
+        X = pd.concat([clinical_transformed, molecular_transformed], axis=1)
+        
+        y = np.array([(bool(val[1]), float(val[0])) for val in np.array(self.status_df[["OS_YEARS","OS_STATUS"]])], dtype = [('status', bool), ('time', float)])
+                
+        return X, y
+    
+# %%
+print(qq)
+
+occurences = np.arange(200)
+
+res1 = np.zeros(len(occurences))
+res2 = np.zeros(len(occurences))
+
+#res11 = np.zeros(5)
+#res22 = np.zeros(5)
+
+for i in tqdm(range(len(occurences))):
+#for i in tqdm(range(5)):
+    set_random_seed(1)
+    tst = Dataset(file_status, file_clinical, file_molecular, chromosomes_min_occurences=int(occurences[i]))
+    Xc, yc = tst.train_data_transformed()
+    X_trainc, X_valc, y_trainc, y_valc = train_test_split(Xc, yc, test_size=0.3, random_state=1)
+    coxc = CoxPHSurvivalAnalysis()
+    coxc.fit(X_trainc, y_trainc)
+
+    predsc = coxc.predict(X_valc)
+    indc = concordance_index_censored(y_valc['status'], y_valc['time'], predsc)[0]
+    indpc = concordance_index_ipcw(y_trainc, y_valc, predsc)[0]
+    res1[i] = indc
+    res2[i] = indpc
+
 # %%
 
-tst = Dataset(file_status, file_clinical, file_molecular)
-        
-    
-    
-    
-    
+x_axis = np.arange(len(occurences))
+#x_axis = np.arange(5)
+plt.scatter(x_axis, res1)
+#plt.scatter(x_axis, res22)
 
+# %%
+
+set_random_seed(1)
+
+tst = Dataset(file_status, file_clinical, file_molecular, chromosomes_min_occurences=5)
+
+Xc, yc = tst.train_data_transformed()
+Xc = Xc.fillna(0)
+
+X_trainc, X_valc, y_trainc, y_valc = train_test_split(Xc, yc, test_size=0.3, random_state=1)
+
+coxc = CoxPHSurvivalAnalysis()
+coxc.fit(X_trainc, y_trainc)
+
+predsc = coxc.predict(X_valc)
+indc = concordance_index_censored(y_valc['status'], y_valc['time'], predsc)[0]
+indpc = concordance_index_ipcw(y_trainc, y_valc, predsc)[0]
+print(indc, indpc)
+
+# %%
+
+for i in range(200):
+    if not np.array_equal(X[i], np.array(Xc)[i]):
+        print(i)
     
-    
-    
-    
+# %%
+
+print(np.array_equal(X[129],np.array(Xc)[129]))
     
     
     

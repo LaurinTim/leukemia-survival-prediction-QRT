@@ -41,7 +41,7 @@ from utils import get_gene_embeddings, get_gene_map, get_gene_embedding, effect_
 
 # %% set random seed of numpy, random and pytorch
 
-random_seed = 2
+random_seed = 1
 
 np.random.seed(random_seed)
 random.seed(random_seed)
@@ -170,7 +170,7 @@ X = np.concatenate((data_cl.values, mol_effect, mol_gene), axis=1)
 y = np.array([(bool(val[1]), float(val[0])) for val in np.array(data_st)], dtype = [('status', bool), ('time', float)])
 
 #split data in training and validation sets
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=random_seed)
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
 
 #check if the max time in the training set is larger than in the validation set, if not another random seed has to be used
 bad_seed = bool(np.max(y_train['time']) < np.max(y_val['time']))
