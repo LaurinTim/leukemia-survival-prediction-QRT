@@ -445,13 +445,14 @@ file_molecular = data_dir+'\\X_train\\molecular_train.csv' #contains molecular i
 
 class Dataset():
     def __init__(self, status_file, clinical_file, molecular_file, clinical_file_test=None, molecular_file_test=None, 
-                 clinical_features=['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES'], gene_embedding_dim=50, chromosomes_min_occurences=5):
+                 clinical_features=['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES'], gene_embedding_dim=50, chromosomes_min_occurences=5, chromosome_embedding_dim=10):
         self.status_file = status_file
         self.clinical_file = clinical_file
         self.molecular_file = molecular_file
         
         self.clinical_features = clinical_features
         self.gene_embedding_dim = gene_embedding_dim
+        self.chromosome_embedding_dim = chromosome_embedding_dim
         self.chromosomes_min_occurences = chromosomes_min_occurences
         
         self.status_df = pd.read_csv(status_file).dropna(subset=["OS_YEARS", "OS_STATUS"]).reset_index(drop=True)
@@ -476,6 +477,10 @@ class Dataset():
         self.__get_gene_model()
         self.__get_gene_embeddings()
         self.__get_gene_map()
+        self.__get_unique_chromosomes()
+        self.__get_chromosome_model()
+        self.__get_chromosome_embeddings()
+        self.__get_chromosome_map()
         self.__get_effects_to_survival_map()
         
                 
@@ -507,6 +512,18 @@ class Dataset():
     
     def __get_unique_chromosomes(self) -> None:
         self.unique_chromosomes = sorted(self.molecular_df["CHR"].unique())
+        
+    def __get_chromosome_model(self) -> None:
+        #number of different genes, the +1 comes from cases where the gene is not known
+        num_chromosomes = len(self.unique_chromosomes) + 1
+        
+        #get model
+        self.chromosome_model = GeneEmbeddingModel(num_chromosomes, self.chromosome_embedding_dim)
+        
+    def __get_chromosome_embeddings(self) -> None:        
+        #get the arguments of the model for the gene embeddings
+        with torch.no_grad():
+            self.chromosome_embeddings = self.chromosome_model.embedding.weight.cpu().numpy()
     
     def __get_chromosome_map(self) -> None:        
         #create map that maps the unique genes to the integers 1 to len(unique_genes)
@@ -514,8 +531,34 @@ class Dataset():
         
         #if no gene is specified in data_molecular it is mapped to 0
         self.chromosome_to_idx["UNKNOWN"] = 0
+        
+    def get_chromosome_embedding(self, patient_chromosomes):
+        #if patient_chromosomes is empty return array containing zeros, else return the mean of the embeddings
+        if len(patient_chromosomes)==0:
+            return np.zeros(self.chromosome_embedding_dim_embedding_dim)
+            
+        #get the indices corresponding to the chromosomes
+        indices = [self.chromosome_to_idx.get(g, 0) for g in patient_chromosomes]
+        
+        #get the embeddings of the indices
+        vectors = [self.chromosome_embeddings[idx] for idx in indices]
+        
+        return np.mean(vectors, axis=0)
     
     def chromosomes_transformer(self):
+        chromosomes_transformed = np.zeros((self.patient_ids.shape[0], self.chromosome_embedding_dim))
+        
+        for i in range(self.patient_ids.shape[0]):
+            curr_patient_id = self.patient_ids[i]
+            curr_molecular = self.molecular_df.loc[self.molecular_id==curr_patient_id]
+            curr_chromosomes = np.array(curr_molecular.loc[:,"CHR"])
+            chromosomes_transformed[i] = self.get_chromosome_embedding(curr_chromosomes)
+            
+        chromosomes_transformed = pd.DataFrame(chromosomes_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["CHR:"+str(i) for i in range(self.chromosome_embedding_dim)])
+        
+        return chromosomes_transformed
+    
+    def chromosomes_transformer1(self):
         chrom_onehot = pd.get_dummies(self.molecular_df["CHR"], prefix="CHR")
         chromosomes_transformed = pd.DataFrame(0, index = np.arange(self.patient_ids.shape[0]), columns=["CHR:"+str(i) for i in np.arange(23)])
         
@@ -675,6 +718,10 @@ class Dataset():
         y = np.array([(bool(val[1]), float(val[0])) for val in np.array(self.status_df[["OS_YEARS","OS_STATUS"]])], dtype = [('status', bool), ('time', float)])
                 
         return X, y
+    
+# %%
+    
+tst = Dataset(file_status, file_clinical, file_molecular, chromosome_embedding_dim=10)
     
 # %%
 print(qq)
