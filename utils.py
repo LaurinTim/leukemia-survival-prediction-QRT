@@ -191,29 +191,6 @@ def fit_and_score_features(X, y):
         m.fit(Xj, y)
         scores[j] = m.score(Xj, y)
     return scores
-
-def set_random_seed(random_seed) -> None:
-    np.random.seed(random_seed)
-    random.seed(random_seed)
-    torch.manual_seed(random_seed)
-    
-###################################################################################################
-#Create a model for the gene embeddings and get a function mapping genes to their embeddings
-###################################################################################################
-#it would be faster to pass unique_genes directly to get_gene_model and get_gene_map since then it would not need to be calculated twice but for the amount of data we have it does not matter and creates less clutter this way
-
-class GeneEmbeddingModel(torch.nn.Module):
-    '''
-    
-    Embedding module for the gene embeddings
-    
-    '''
-    def __init__(self, num_genes, embedding_dim):
-        super(GeneEmbeddingModel, self).__init__()
-        self.embedding = torch.nn.Embedding(num_genes, embedding_dim)
-        
-    def forward(self, gene_idx):
-        return self.embedding(gene_idx)
     
 def __get_unique_genes(data_file_molecular=data_dir+'\\X_train\\molecular_train.csv', data_file_status=data_dir+'\\target_train.csv'):
     '''
@@ -274,7 +251,7 @@ def __get_gene_model(embedding_dim=50, data_file_molecular=data_dir+'\\X_train\\
     num_genes = len(unique_genes) + 1
     
     #get model
-    gene_model = GeneEmbeddingModel(num_genes, embedding_dim)
+    gene_model = EmbeddingModel(num_genes, embedding_dim)
     
     return gene_model
 
@@ -426,6 +403,32 @@ def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_tr
             effect_survival_map[effect] = kmf.median_survival_time_
     
     return effect_survival_map
+
+# %%
+
+def set_random_seed(random_seed) -> None:
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+    torch.manual_seed(random_seed)
+    
+###################################################################################################
+#Create a model for the gene embeddings and get a function mapping genes to their embeddings
+###################################################################################################
+#it would be faster to pass unique_genes directly to get_gene_model and get_gene_map since then it would not need to be calculated twice but for the amount of data we have it does not matter and creates less clutter this way
+
+class EmbeddingModel(torch.nn.Module):
+    '''
+    
+    Embedding module for the gene and chromosome embeddings
+    
+    '''
+    def __init__(self, num, embedding_dim):
+        super(EmbeddingModel, self).__init__()
+        self.embedding = torch.nn.Embedding(num, embedding_dim)
+        
+    def forward(self, idx):
+        return self.embedding(idx)
+
 # %%
 
 from sksurv.linear_model import CoxPHSurvivalAnalysis
@@ -445,13 +448,14 @@ file_molecular = data_dir+'\\X_train\\molecular_train.csv' #contains molecular i
 
 class Dataset():
     def __init__(self, status_file, clinical_file, molecular_file, clinical_file_test=None, molecular_file_test=None, 
-                 clinical_features=['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES'], gene_embedding_dim=50, chromosomes_min_occurences=5):
+                 clinical_features=['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES'], gene_embedding_dim=50, chromosomes_min_occurences=5, chromosome_embedding_dim=10):
         self.status_file = status_file
         self.clinical_file = clinical_file
         self.molecular_file = molecular_file
         
         self.clinical_features = clinical_features
         self.gene_embedding_dim = gene_embedding_dim
+        self.chromosome_embedding_dim = chromosome_embedding_dim
         self.chromosomes_min_occurences = chromosomes_min_occurences
         
         self.status_df = pd.read_csv(status_file).dropna(subset=["OS_YEARS", "OS_STATUS"]).reset_index(drop=True)
@@ -472,6 +476,10 @@ class Dataset():
         self.molecular_file_test = molecular_file_test
         
         #self.__get_chromosome_encoder()
+        self.__get_unique_chromosomes()
+        self.__get_chromosome_model()
+        self.__get_chromosome_embeddings()
+        self.__get_chromosome_map()
         self.__get_unique_genes()
         self.__get_gene_model()
         self.__get_gene_embeddings()
@@ -502,11 +510,31 @@ class Dataset():
             #curr_feature_median = curr_feature_df.median()
             #curr_feature_df = curr_feature_df.fillna(value = curr_feature_median)
             clinical_transformed.loc[:,feature] = curr_feature_df
+            
+        #clinical_transformed.index = self.patient_ids
         
         return clinical_transformed
     
+    def length_start_end_transformer(self):
+        start_end_transformed = pd.DataFrame(0, index=np.arange(self.patient_ids.shape[0]))
+        
+        return start_end_transformed
+    
     def __get_unique_chromosomes(self) -> None:
-        self.unique_chromosomes = sorted(self.molecular_df["CHR"].unique())
+        #self.unique_chromosomes = list(self.molecular_df["CHR"].unique())
+        self.unique_chromosomes = ['11', '5', '3', '4', '2', '22', '17', 'X', '12', '9', '7', '1', '8', '16', '20', '21', '19', '15', '13', '6', '18', '14', '10', np.nan]
+        
+    def __get_chromosome_model(self) -> None:
+        #number of different genes, the +1 comes from cases where the gene is not known
+        num_chromosomes = len(self.unique_chromosomes) + 1
+        
+        #get model
+        self.chromosome_model = EmbeddingModel(num_chromosomes, self.chromosome_embedding_dim)
+        
+    def __get_chromosome_embeddings(self) -> None:        
+        #get the arguments of the model for the gene embeddings
+        with torch.no_grad():
+            self.chromosome_embeddings = self.chromosome_model.embedding.weight.cpu().numpy()
     
     def __get_chromosome_map(self) -> None:        
         #create map that maps the unique genes to the integers 1 to len(unique_genes)
@@ -514,8 +542,35 @@ class Dataset():
         
         #if no gene is specified in data_molecular it is mapped to 0
         self.chromosome_to_idx["UNKNOWN"] = 0
+        
+    def get_chromosome_embedding(self, patient_chromosomes):
+        #if patient_chromosomes is empty return array containing zeros, else return the mean of the embeddings
+        if len(patient_chromosomes)==0:
+            return np.zeros(self.chromosome_embedding_dim)
+            
+        #get the indices corresponding to the chromosomes
+        indices = [self.chromosome_to_idx.get(g, 0) for g in patient_chromosomes]
+        
+        #get the embeddings of the indices
+        vectors = [self.chromosome_embeddings[idx] for idx in indices]
+        
+        return np.mean(vectors, axis=0)
     
     def chromosomes_transformer(self):
+        chromosomes_transformed = np.zeros((self.patient_ids.shape[0], self.chromosome_embedding_dim))
+        
+        for i in range(self.patient_ids.shape[0]):
+            curr_patient_id = self.patient_ids[i]
+            curr_molecular = self.molecular_df.loc[self.molecular_id==curr_patient_id]
+            curr_chromosomes = np.array(curr_molecular.loc[:,"CHR"])
+            chromosomes_transformed[i] = self.get_chromosome_embedding(curr_chromosomes)
+            
+        chromosomes_transformed = pd.DataFrame(chromosomes_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["CHR:"+str(i) for i in range(self.chromosome_embedding_dim)])
+        #chromosomes_transformed = pd.DataFrame(chromosomes_transformed, index=self.patient_ids, columns=["CHR:"+str(i) for i in range(self.chromosome_embedding_dim)])
+        
+        return chromosomes_transformed
+    
+    def chromosomes_transformer_onehot(self):
         chrom_onehot = pd.get_dummies(self.molecular_df["CHR"], prefix="CHR")
         chromosomes_transformed = pd.DataFrame(0, index = np.arange(self.patient_ids.shape[0]), columns=["CHR:"+str(i) for i in np.arange(23)])
         
@@ -539,7 +594,7 @@ class Dataset():
         num_genes = len(self.unique_genes) + 1
         
         #get model
-        self.gene_model = GeneEmbeddingModel(num_genes, self.gene_embedding_dim)
+        self.gene_model = EmbeddingModel(num_genes, self.gene_embedding_dim)
         
     def __get_gene_embeddings(self) -> None:        
         #get the arguments of the model for the gene embeddings
@@ -576,6 +631,7 @@ class Dataset():
             genes_transformed[i] = self.get_gene_embedding(curr_genes)
             
         genes_transformed = pd.DataFrame(genes_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["GENE:"+str(i) for i in range(self.gene_embedding_dim)])
+        #genes_transformed = pd.DataFrame(genes_transformed, index=self.patient_ids, columns=["GENE:"+str(i) for i in range(self.gene_embedding_dim)]).sort_index()
         
         return genes_transformed
     
@@ -653,6 +709,7 @@ class Dataset():
                 effects_transformed[i] = [global_median_survival, 0]
                 
         effects_transformed = pd.DataFrame(effects_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["EFFECT_TRANSFORMED", "NUMBER_OF_MUTATIONS"])
+        #effects_transformed = pd.DataFrame(effects_transformed, index=self.patient_ids, columns=["EFFECT_TRANSFORMED", "NUMBER_OF_MUTATIONS"]).sort_index()
         
         return effects_transformed
     
@@ -675,7 +732,226 @@ class Dataset():
         y = np.array([(bool(val[1]), float(val[0])) for val in np.array(self.status_df[["OS_YEARS","OS_STATUS"]])], dtype = [('status', bool), ('time', float)])
                 
         return X, y
+
+# %%
+
+set_random_seed(1)    
+
+tstc = Dataset(file_status, file_clinical, file_molecular)
+
+Xc, yc = tstc.train_data_transformed()
+Xc = Xc.fillna(0)
+
+X_trainc, X_valc, y_trainc, y_valc = train_test_split(Xc, yc, test_size=0.3, random_state=1)
+
+#alpha seems to be best below 3000, ties probably better with "breslow", changing tol and n_iter currently does not matter as the loss converges very early (before 20 iterations)
+
+coxc = CoxPHSurvivalAnalysis()
+coxc.fit(X_trainc, y_trainc)
+
+predsc = coxc.predict(X_valc)
+indc = concordance_index_censored(y_valc['status'], y_valc['time'], predsc)[0]
+indpc = concordance_index_ipcw(y_trainc, y_valc, predsc)[0]
+print(indc, indpc)
+
+# %%
+
+set_random_seed(1)  
+
+dd = Dataset(file_status, file_clinical, file_molecular)
+ee = dd.effects_transformer().reset_index(drop=True)
+
+# %%
+
+aa = dd.chromosomes_transformer()
+aa.index = dd.patient_ids
+aa = aa.sort_index().reset_index(drop=True)
+
+# %%
+
+t = np.array(['11', '5', '3', '4', '2', '5'])
+emm = dd.chromosome_embeddings
+   
+# %%
+
+scores1 = fit_and_score_features(np.array(X_trainc), np.array(y_trainc))
+vals1 = pd.Series(scores1, index=X_trainc.columns).sort_values(ascending=False)
+
+# %%
+from time import time
+
+tst_df = tst.molecular_df
+tst_id = tst.patient_ids
+tst_idm = tst.molecular_id
+
+# %%
+start_time=time()
+
+tst1 = np.zeros((tst_id.shape[0], 3))
+
+for i in tqdm(range(tst_id.shape[0])):
+#for i in range(1):
+    curr_id = tst_id[i]
+    curr_df = tst_df[tst_idm==curr_id]
+    curr_start = curr_df.loc[:,"START"]
+    curr_end = curr_df.loc[:,"END"]
+    curr_len = curr_end-curr_start
+    curr_start = np.average(curr_start)
+    curr_end = np.average(curr_end)
+    curr_len = np.average(curr_len)
+    tst1[i] = np.array([curr_start, curr_end, curr_len])
     
+tst1 = pd.DataFrame(tst1, index=np.arange(tst1.shape[0]), columns=["AV_START", "AV_END", "AV_LEN"])
+    
+end_time = time()
+print(f"\nRuntime: {end_time-start_time:0.4f}")
+
+# %%
+start_time=time()
+
+tst1 = pd.DataFrame(0, index=np.arange(tst_id.shape[0]), columns=["AV_START", "AV_END", "AV_LEN"])
+
+for i in tqdm(range(tst_id.shape[0])):
+#for i in range(1):
+    curr_id = tst_id[i]
+    curr_df = tst_df[tst_idm==curr_id]
+    curr_start = curr_df.loc[:,"START"]
+    curr_end = curr_df.loc[:,"END"]
+    curr_len = curr_end-curr_start
+    curr_start = np.average(curr_start)
+    curr_end = np.average(curr_end)
+    curr_len = np.average(curr_len)
+    tst1.iloc[i] = np.array([curr_start, curr_end, curr_len])
+        
+end_time = time()
+print(f"\nRuntime: {end_time-start_time:0.4f}")
+
+# %%
+tst_col = np.array(tst_df.columns)
+tst_df = np.array(tst_df)
+tst_id = np.array(tst_id)
+tst_idm = np.array(tst_idm)
+
+# %%
+
+start_time=time()
+
+tst1 = np.zeros((tst_id.shape[0], 3))
+
+for i in tqdm(range(tst_id.shape[0])):
+#for i in range(1):
+    curr_id = tst_id[i]
+    curr_df = tst_df[tst_idm==curr_id]
+    curr_start = curr_df[:,2]
+    curr_end = curr_df[:,3]
+    curr_len = curr_end-curr_start
+    curr_start = np.average(curr_start)
+    curr_end = np.average(curr_end)
+    curr_len = np.average(curr_len)
+    tst1[i] = np.array([curr_start, curr_end, curr_len])
+    
+tst1 = pd.DataFrame(tst1, index=np.arange(tst1.shape[0]), columns=["AV_START", "AV_END", "AV_LEN"])
+    
+end_time = time()
+print(f"\nRuntime: {end_time-start_time:0.4f}")
+
+# %%
+
+start_time=time()
+
+start_col = np.array(tst_df[:,tst_col=="START"]).reshape(-1,1)
+end_col = np.array(tst_df[:,tst_col=="END"]).reshape(-1,1)
+tst_dat = np.concatenate((start_col, end_col), axis=1)
+
+tst11 = np.zeros((tst_id.shape[0], 3))
+
+for i in tqdm(range(tst_id.shape[0])):
+#for i in range(1):
+    curr_id = tst_id[i]
+    curr_dat = tst_dat[tst_idm==curr_id]
+    curr_len = curr_dat[:,1]-curr_dat[:,0]
+    curr_start = np.average(curr_dat[:,0])
+    curr_end = np.average(curr_dat[:,1])
+    curr_len = np.average(curr_len)
+    tst11[i] = np.array([curr_start, curr_end, curr_len])
+    
+tst11 = pd.DataFrame(tst1, index=np.arange(tst1.shape[0]), columns=["AV_START", "AV_END", "AV_LEN"])
+    
+end_time = time()
+print(f"\nRuntime: {end_time-start_time:0.4f}")
+
+# %%
+
+tst_df = tst.molecular_df
+tst_id = tst.patient_ids
+tst_idm = tst.molecular_id
+
+tst_col = np.array(tst_df.columns)
+tst_df = np.array(tst_df)
+tst_id = np.array(tst_id)
+tst_idm = np.array(tst_idm)
+
+tst_df = tst_df[tst_idm.argsort()]
+tst_idm = tst_idm[tst_idm.argsort()]
+tst_df = np.split(tst_df, np.unique(tst_idm, return_index=True)[1])
+tst_umod = np.unique(tst_idm)
+
+# %%
+
+start_time=time()
+
+tst1 = np.zeros((tst_id.shape[0], 3))
+
+for i in tqdm(range(tst_id.shape[0])):
+    curr_id = tst_id[i]
+    if not curr_id in tst_umod:
+        tst1[i] = np.zeros(3)
+        continue
+    
+    curr_loc = int(np.where(tst_umod==curr_id)[0])
+    curr_dat = tst_df[curr_loc]
+    curr_len = curr_dat[:,3]-curr_dat[:,2]
+    curr_start = np.average(curr_dat[:,2])
+    curr_end = np.average(curr_dat[:,3])
+    curr_len = np.average(curr_len)
+    tst1[i] = np.array([curr_start, curr_end, curr_len])
+    
+tst1 = pd.DataFrame(tst1, index=np.arange(tst1.shape[0]), columns=["AV_START", "AV_END", "AV_LEN"])
+    
+end_time = time()
+print(f"\nRuntime: {end_time-start_time:0.4f}")
+
+# %%
+occurences = np.arange(30)
+
+res1 = np.zeros(len(occurences))
+res2 = np.zeros(len(occurences))
+
+#res11 = np.zeros(5)
+#res22 = np.zeros(5)
+
+for i in tqdm(range(len(occurences))):
+#for i in tqdm(range(5)):
+    set_random_seed(2)
+    tst = Dataset(file_status, file_clinical, file_molecular, chromosome_embedding_dim=int(occurences[i]))
+    Xc, yc = tst.train_data_transformed()
+    X_trainc, X_valc, y_trainc, y_valc = train_test_split(Xc, yc, test_size=0.3, random_state=1)
+    coxc = CoxPHSurvivalAnalysis()
+    coxc.fit(X_trainc, y_trainc)
+
+    predsc = coxc.predict(X_valc)
+    indc = concordance_index_censored(y_valc['status'], y_valc['time'], predsc)[0]
+    indpc = concordance_index_ipcw(y_trainc, y_valc, predsc)[0]
+    res1[i] = indc
+    res2[i] = indpc
+    
+# %%
+
+x_axis = np.arange(len(occurences))
+#x_axis = np.arange(5)
+plt.scatter(x_axis, res1)
+#plt.scatter(x_axis, res22)
+
 # %%
 print(qq)
 
