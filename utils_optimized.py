@@ -16,6 +16,8 @@ from sklearn.model_selection import train_test_split
 
 from sklearn.preprocessing import OrdinalEncoder
 
+from time import time
+
 #Directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
 
@@ -38,6 +40,33 @@ class EmbeddingModel(torch.nn.Module):
         
     def forward(self, idx):
         return self.embedding(idx)
+    
+def fit_and_score_features(X, y):
+    '''
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        Array containing the data used to train the model.
+    y : numpy.ndarray
+        Structured array where each element is a tuple of length 2 and type 
+        [(bool), (float)] containing the target for the training.
+
+    Returns
+    -------
+    scores : numpy.ndarray
+        Array (length=X.shape[1]) containing the concordance indices for 
+        each feature in X.
+
+    '''
+    n_features = X.shape[1]
+    scores = np.empty(n_features)
+    m = CoxPHSurvivalAnalysis()
+    for j in tqdm(range(n_features)):
+        Xj = X[:, j : j + 1]
+        m.fit(Xj, y)
+        scores[j] = m.score(Xj, y)
+    return scores
 
 # %%
 
@@ -78,6 +107,7 @@ class DataPrep():
         self.molecular_columns = np.array(self.molecular_df.columns)
         self.molecular_arr = self.molecular_df.to_numpy(copy=True)
         self.__molecular_id_sort()
+        self.__get_effects_to_survival_map()
         
     def __valid_patients_df(self, df):
         return_df = df[df.loc[:,"ID"].isin(self.patient_ids)]
@@ -100,6 +130,25 @@ class DataPrep():
                 
     def __molecular_id_sort(self) -> None:
         self.molecular_split = np.split(self.molecular_arr, np.unique(self.molecular_arr[:,0], return_index=True)[1][1:])
+        
+    def __get_effects_to_survival_map(self) -> None:
+        comb_df = self.molecular_df.merge(self.status_df, on='ID', how='left')
+        
+        #use lifelines.KaplanMeierFitter to account for the censoring when evaluating the map
+        kmf = KaplanMeierFitter()
+        self.effects_survival_map = {}
+        
+        #use groupby to create a tuple for each unique effect containing (effect name, data_molecular[data_molecular['EFFECT] == efect name]) which get passed on to loop as effect and subset
+        for effect, subset in comb_df.groupby("EFFECT"):
+            #use Kaplan-Meier estimate using subset["OS_YEARS"] as durations and subset["OS_STATUS"] for the censoring
+            kmf.fit(durations=list(subset["OS_YEARS"]), event_observed=list(subset["OS_STATUS"]))
+            #check if kmf can calculate the median (it cannot if subset has to few values from patients with status=1, this is the case for the the effect "inframe_variant")
+            if kmf.median_survival_time_ == np.inf: #kmf cannot compute the median
+                #set the value in the map for the current effect to the max survival time in subset
+                self.effects_survival_map[effect] = np.float64(np.max(subset["OS_YEARS"]))
+            else:
+                #set the value in the map for the current effect to the median survival time obtained using the Kaplan Meier estimate
+                self.effects_survival_map[effect] = kmf.median_survival_time_
 
 # %%
 
@@ -119,7 +168,9 @@ class Dataset():
                  clinical_columns=np.array(['ID', 'CENTER', 'BM_BLAST', 'WBC', 'ANC', 'MONOCYTES', 'HB', 'PLT', 'CYTOGENETICS']), 
                  molecular_columns=np.array(['ID', 'CHR', 'START', 'END', 'REF', 'ALT', 'GENE', 'PROTEIN_CHANGE', 'EFFECT', 'VAF', 'DEPTH']),
                  clinical_features=np.array(['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES']), 
+                 effects_survival_map=None,
                  gene_embedding_dim=50, chromosome_embedding_dim=10, chromosomes_min_occurences=5):
+        
         self.clinical_features = clinical_features
         self.gene_embedding_dim = gene_embedding_dim
         self.chromosome_embedding_dim = chromosome_embedding_dim
@@ -138,7 +189,7 @@ class Dataset():
         self.molecular_columns = molecular_columns
         self.molecular_id = self.molecular_arr[:,0]
         self.molecular_split = np.split(self.molecular_arr, np.unique(self.molecular_arr[:,0], return_index=True)[1][1:])
-                
+                            
         self.__get_unique_chromosomes()
         self.__get_chromosome_model()
         self.__get_chromosome_embeddings()
@@ -147,15 +198,40 @@ class Dataset():
         self.__get_gene_model()
         self.__get_gene_embeddings()
         self.__get_gene_map()
-        self.__get_effects_to_survival_map()
         
+        if effects_survival_map == None:
+            self.__get_effects_to_survival_map()
+        else:
+            self.effects_survival_map = effects_survival_map
+        
+                    
                 
     def __call__(self):
         print("Dataset containing training data.")
+        
+    def cyto_patient_risk(self, cyto):
+        cyto=cyto.strip().upper()
+        
+        favorable_markers = ["T(8;21)", "INV(16)", "T(15;17)"]
+        adverse_markers = ["MONOSOMY 7", "-7", "COMPLEX", "MONOSOMY 5", "-5", "DEL(5Q)", "DEL(7Q)"]
+        
+        if cyto in ["46,XX", "46,XY"]:
+            return 0
+        
+        for marker in favorable_markers:
+            if marker in cyto:
+                return 0
+            
+        for marker in adverse_markers:
+            if marker in cyto:
+                return 2
+            
+        return 1
     
     def clinical_transformer(self):
-        clinical_transformed = np.zeros((self.patient_num, len(self.clinical_features)))
+        clinical_transformed = np.zeros((self.patient_num, len(self.clinical_features)+3))
         arr_pos = 0
+        cyto_pos = np.where(self.clinical_columns == "CYTOGENETICS")[0][0]
         
         for feature in self.clinical_features:
             curr_column = int(np.where(self.clinical_columns==feature)[0][0])
@@ -164,13 +240,44 @@ class Dataset():
             #curr_feature_df = curr_feature_df.fillna(value = curr_feature_median)
             clinical_transformed[:, arr_pos] = curr_feature_arr
             arr_pos += 1
+        
+        for i in range(self.patient_num):
+            curr_cyto = self.clinical_arr[i, cyto_pos]
+            if type(curr_cyto) != str: 
+                continue
+            curr_risk = self.cyto_patient_risk(curr_cyto)
+            if curr_risk == 0:
+                clinical_transformed[i, -3] = 1
+            if curr_risk == 1:
+                clinical_transformed[i, -2] = 1
+            if curr_risk == 2:
+                clinical_transformed[i, -1] = 1
             
-        clinical_transformed = pd.DataFrame(clinical_transformed, index=np.arange(self.patient_ids.shape[0]), columns=self.clinical_features)
+        clinical_transformed = pd.DataFrame(clinical_transformed, index=np.arange(self.patient_ids.shape[0]), columns=np.append(self.clinical_features, ["CYTO_LOW","CYTO_MED","CYTO_HIGH"]))
         
         return clinical_transformed
     
-    def length_start_end_transformer(self):
-        start_end_transformed = pd.DataFrame(0, index=np.arange(self.patient_ids.shape[0]))
+    def start_end_transformer(self):
+        start_end_transformed = np.zeros((self.patient_num, 3))
+        
+        start_pos = np.where(self.molecular_columns == "START")[0][0]
+        end_pos = np.where(self.molecular_columns == "END")[0][0]
+        
+        for i in range(self.patient_ids.shape[0]):
+            curr_patient_id = self.patient_ids[i]
+            curr_molecular = self.molecular_split[i]
+            if curr_molecular[0][0] != curr_patient_id or len(set(curr_molecular[:,0]))>1:
+                print("-"*50, "ERROR", "-"*50)
+            curr_start = curr_molecular[:, start_pos]
+            curr_end = curr_molecular[:, end_pos]
+            curr_len = curr_end-curr_start
+            #if len(curr_len)==0 or (len(curr_len)==1 and np.isnan(curr_len[0])):
+            #    continue
+            start_end_transformed[i][0] = np.mean(curr_len)
+            start_end_transformed[i][1] = np.std(curr_len)
+            start_end_transformed[i][2] = np.max(curr_len)
+        
+        start_end_transformed = pd.DataFrame(start_end_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["LEN_MEAN", "LEN_STD", "LEN_MAX"])
         
         return start_end_transformed
     
@@ -221,12 +328,9 @@ class Dataset():
             if curr_molecular[0][0] != curr_patient_id or len(set(curr_molecular[:,0]))>1:
                 print("-"*50, "ERROR", "-"*50)
             curr_chromosomes = curr_molecular[:, chromosomes_pos]
-            
-            if len(curr_chromosomes)==1 and type(curr_chromosomes[0])!=str:
-                continue
-            else:
-                chromosomes_transformed[i] = self.get_chromosome_embedding(curr_chromosomes)
-            
+            #if len(curr_chromosomes)==1 and type(curr_chromosomes[0])!=str: continue
+            chromosomes_transformed[i] = self.get_chromosome_embedding(curr_chromosomes)
+                        
         chromosomes_transformed = pd.DataFrame(chromosomes_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["CHR:"+str(i) for i in range(self.chromosome_embedding_dim)])
         
         return chromosomes_transformed
@@ -278,8 +382,7 @@ class Dataset():
             if curr_molecular[0][0] != curr_patient_id or len(set(curr_molecular[:,0]))>1:
                 print("-"*50, "ERROR", "-"*50)
             curr_genes = curr_molecular[:, genes_pos]
-            if len(curr_genes)==1 and type(curr_genes[0])!=str:
-                continue
+            #if len(curr_genes)==1 and type(curr_genes[0])!=str: continue
             genes_transformed[i] = self.get_gene_embedding(curr_genes)
             
         genes_transformed = pd.DataFrame(genes_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["GENE:"+str(i) for i in range(self.gene_embedding_dim)])
@@ -320,8 +423,10 @@ class Dataset():
             curr_patient_id = self.patient_ids[i]
             curr_molecular = self.molecular_split[i]
             curr_effects = curr_molecular[:,effects_pos]
+            
             if curr_molecular[0][0] != curr_patient_id or len(set(curr_molecular[:,0]))>1:
                 print("-"*50, "ERROR", "-"*50)
+                
             if len(curr_effects)>0 and not (len(curr_effects)==1 and str(curr_effects[0])=='nan'):
                 #get tuple (length=len(curr_effects)) with the survival times associated with the elements of curr_effects
                 curr_survival = np.array(itemgetter(*curr_effects)(self.effects_survival_map))
@@ -339,19 +444,65 @@ class Dataset():
         
         return effects_transformed
     
+    def __classify_mutation(self, ref, alt):
+        if len(ref) == len(alt):
+            return 0
+        elif len(ref) > len(alt):
+            return 1
+        else:
+            return 2
+    
+    def mutation_transformer(self):
+        mutation_transformed = np.zeros((self.patient_num, 3))
+        
+        ref_pos = np.where(self.molecular_columns == "REF")[0][0]
+        alt_pos = np.where(self.molecular_columns == "ALT")[0][0]
+        
+        for i in range(self.patient_num):
+            curr_patient_id = self.patient_ids[i]
+            curr_molecular = self.molecular_split[i]
+            if curr_molecular[0][0] != curr_patient_id or len(set(curr_molecular[:,0]))>1:
+                print("-"*50, "ERROR", "-"*50)
+                
+            curr_ref = curr_molecular[:, ref_pos]
+            curr_alt = curr_molecular[:, alt_pos]
+            
+            curr_mut = np.zeros(3)
+            for k in range(curr_ref.shape[0]):
+                if str(curr_ref[k]) == 'nan' or str(curr_alt[k]) == 'nan':
+                    continue
+                curr_mut_class = self.__classify_mutation(curr_ref[k], curr_alt[k])
+                curr_mut[curr_mut_class] += 1
+                
+            mutation_transformed[i] = curr_mut
+            
+        mutation_transformed = pd.DataFrame(mutation_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["MUT_SUB", "MUT_DEL", "MUT_INS"])
+        
+        return mutation_transformed
+        
     def molecular_transformer(self):
         chromosomes_transformed = self.chromosomes_transformer().reset_index(drop=True)
         effects_transformed = self.effects_transformer().reset_index(drop=True)
         genes_transformed = self.genes_transformer().reset_index(drop=True)
+        start_end_transformed = self.start_end_transformer()
+        #mutation_transformed = self.mutation_transformer()
         
-        molecular_transformed = pd.concat([effects_transformed, chromosomes_transformed, genes_transformed], axis=1)
+        #molecular_transformed = pd.concat([effects_transformed, chromosomes_transformed, genes_transformed, start_end_transformed, mutation_transformed], axis=1)
+        molecular_transformed = pd.concat([effects_transformed, chromosomes_transformed, genes_transformed, start_end_transformed], axis=1)
+        #molecular_transformed = pd.concat([effects_transformed, chromosomes_transformed, genes_transformed], axis=1)
         #molecular_transformed = pd.concat([effects_transformed, genes_transformed], axis=1)
         
         return molecular_transformed
     
     def train_data_transformed(self):
         clinical_transformed = self.clinical_transformer().reset_index(drop=True)
+        #clinical_transformed = clinical_transformed.drop(["CYTO_LOW","CYTO_MED","CYTO_HIGH"], axis=1)
         molecular_transformed = self.molecular_transformer().reset_index(drop=True)
+        molecular_transformed = molecular_transformed.drop(["LEN_MEAN", "LEN_STD", "LEN_MAX"], axis=1)
+        #molecular_transformed = molecular_transformed.drop(["MUT_SUB", "MUT_DEL", "MUT_INS"], axis=1)
+        #molecular_transformed = molecular_transformed.drop(["GENE:"+str(i) for i in range(50)], axis=1)
+        #molecular_transformed = molecular_transformed.drop(["CHR:"+str(i) for i in range(10)], axis=1)
+        
         
         X = pd.concat([clinical_transformed, molecular_transformed], axis=1)
         
@@ -361,24 +512,102 @@ class Dataset():
 
 # %%
 
-set_random_seed(1)    
+set_random_seed(1)
 
-tst = Dataset(dat.status_arr, dat.clinical_arr, dat.molecular_arr)
+d = Dataset(dat.status_arr, dat.clinical_arr, dat.molecular_arr, effects_survival_map=dat.effects_survival_map)
 
-X, y = tst.train_data_transformed()
+X, y = d.train_data_transformed()
 X = X.fillna(0)
 
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3)
 
 #alpha seems to be best below 3000, ties probably better with "breslow", changing tol and n_iter currently does not matter as the loss converges very early (before 20 iterations)
 
-cox = CoxPHSurvivalAnalysis()
+cox = CoxPHSurvivalAnalysis(alpha=0)
 cox.fit(X_train, y_train)
 
 preds = cox.predict(X_val)
 ind = concordance_index_censored(y_val['status'], y_val['time'], preds)[0]
 indp = concordance_index_ipcw(y_train, y_val, preds)[0]
 print(ind, indp)
+
+# %%
+
+scores = fit_and_score_features(np.array(X_train), np.array(y_train))
+
+vals = pd.Series(scores, index=X.columns).sort_values(ascending=False)
+
+# %% with LEN, MUT info
+
+inda = np.zeros(1000)
+indpa = np.zeros(1000)
+
+for i in tqdm(range(1000)):
+    set_random_seed(i)
+    
+    d = Dataset(dat.status_arr, dat.clinical_arr, dat.molecular_arr, effects_survival_map=dat.effects_survival_map)
+    
+    X, y = d.train_data_transformed()
+    X = X.fillna(0)
+    
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3)
+    
+    #alpha seems to be best below 3000, ties probably better with "breslow", changing tol and n_iter currently does not matter as the loss converges very early (before 20 iterations)
+    
+    cox = CoxPHSurvivalAnalysis()
+    cox.fit(X_train, y_train)
+    
+    preds = cox.predict(X_val)
+    try:
+        inda[i] = concordance_index_censored(y_val['status'], y_val['time'], preds)[0]
+        indpa[i] = concordance_index_ipcw(y_train, y_val, preds)[0]
+    except:
+        inda[i]=0.71
+        indpa[i]=0.67
+    
+# %% without LEN, MUT info
+
+indb = np.zeros(1000)
+indpb = np.zeros(1000)
+
+for i in tqdm(range(1000)):
+    set_random_seed(i)
+    
+    d = Dataset(dat.status_arr, dat.clinical_arr, dat.molecular_arr, effects_survival_map=dat.effects_survival_map)
+    
+    X, y = d.train_data_transformed()
+    X = X.fillna(0)
+    
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3)
+    
+    #alpha seems to be best below 3000, ties probably better with "breslow", changing tol and n_iter currently does not matter as the loss converges very early (before 20 iterations)
+    
+    cox = CoxPHSurvivalAnalysis()
+    cox.fit(X_train, y_train)
+    
+    preds = cox.predict(X_val)
+    try:
+        indb[i] = concordance_index_censored(y_val['status'], y_val['time'], preds)[0]
+        indpb[i] = concordance_index_ipcw(y_train, y_val, preds)[0]
+    except:
+        indb[i]=0.71
+        indpb[i]=0.67
+
+# %%
+
+x_axis = np.arange(1000)
+
+plt.figure()
+
+plt.scatter(x_axis, inda, c='blue')
+plt.scatter(x_axis, indb, c='red')
+
+plt.figure()
+
+plt.scatter(x_axis, indpa, c='blue')
+plt.scatter(x_axis, indpb, s=30, c='red')
+
+print(np.sum(indb>inda), np.sum(indpb>indpa))
 
 # %%
 

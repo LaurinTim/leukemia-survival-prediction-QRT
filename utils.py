@@ -564,7 +564,10 @@ class Dataset():
             curr_molecular = self.molecular_df.loc[self.molecular_id==curr_patient_id]
             curr_chromosomes = np.array(curr_molecular.loc[:,"CHR"])
             chromosomes_transformed[i] = self.get_chromosome_embedding(curr_chromosomes)
-            
+                
+        #print(chromosomes_transformed[np.where(self.patient_ids=="P102786")[0][0]])
+        #print(chromosomes_transformed[np.where(self.patient_ids=="P117409")[0][0]])
+                
         chromosomes_transformed = pd.DataFrame(chromosomes_transformed, index=np.arange(self.patient_ids.shape[0]), columns=["CHR:"+str(i) for i in range(self.chromosome_embedding_dim)])
         #chromosomes_transformed = pd.DataFrame(chromosomes_transformed, index=self.patient_ids, columns=["CHR:"+str(i) for i in range(self.chromosome_embedding_dim)])
         
@@ -730,6 +733,12 @@ class Dataset():
         X = pd.concat([clinical_transformed, molecular_transformed], axis=1)
         
         y = np.array([(bool(val[1]), float(val[0])) for val in np.array(self.status_df[["OS_YEARS","OS_STATUS"]])], dtype = [('status', bool), ('time', float)])
+        
+        sorted_indices = np.argsort(self.patient_ids)
+        y = y[sorted_indices]
+        
+        X.index = self.patient_ids
+        X = X.sort_index().reset_index(drop=True)
                 
         return X, y
 
@@ -737,12 +746,14 @@ class Dataset():
 
 set_random_seed(1)    
 
-tstc = Dataset(file_status, file_clinical, file_molecular)
+dd = Dataset(file_status, file_clinical, file_molecular)
 
-Xc, yc = tstc.train_data_transformed()
+Xc, yc = dd.train_data_transformed()
+#Xc.index = dd.patient_ids
+#Xc = Xc.sort_index().reset_index(drop=True)
 Xc = Xc.fillna(0)
 
-X_trainc, X_valc, y_trainc, y_valc = train_test_split(Xc, yc, test_size=0.3, random_state=1)
+X_trainc, X_valc, y_trainc, y_valc = train_test_split(Xc, yc, test_size=0.3)#, random_state=4)
 
 #alpha seems to be best below 3000, ties probably better with "breslow", changing tol and n_iter currently does not matter as the loss converges very early (before 20 iterations)
 
