@@ -805,16 +805,16 @@ class NeuralNetwork(torch.nn.Module):
             torch.nn.BatchNorm1d(num_features),
             torch.nn.Linear(74, 250),
             torch.nn.Tanh(),
-            torch.nn.Dropout(p=0.5),
+            torch.nn.Dropout(p=0.7),
             torch.nn.Linear(250, 250),
             torch.nn.Tanh(),
-            torch.nn.Dropout(p=0.5),
+            torch.nn.Dropout(p=0.7),
             torch.nn.Linear(250, 250),
             torch.nn.Tanh(),
-            torch.nn.Dropout(p=0.5),
+            torch.nn.Dropout(p=0.7),
             torch.nn.Linear(250, 250),
             torch.nn.Tanh(),
-            torch.nn.Dropout(p=0.5),
+            torch.nn.Dropout(p=0.7),
             torch.nn.Linear(250, 1),
             #torch.nn.Linear()
         )
@@ -829,7 +829,7 @@ cox_model = NeuralNetwork()
 # %% Define learning rate, epoch and optimizer
 
 LEARNING_RATE = 1e-4
-EPOCHS = 50
+EPOCHS = 200
 optimizer = torch.optim.AdamW(cox_model.parameters(), lr=LEARNING_RATE, weight_decay=0.7)
 con = ConcordanceIndex()
 
@@ -893,7 +893,7 @@ def val_loop(model, epoch):
         con_ind_ipcw = con(pred.float(), event, time.float(), weight = weight_ipcw)
         curr_con_ind_ipcw = con_ind_ipcw
             
-        if curr_con_ind_ipcw > best_ipcw_ind:
+        if curr_con_ind_ipcw >= best_ipcw_ind:
             best_ind = curr_con_ind
             best_ipcw_ind = curr_con_ind_ipcw
             best_loss = loss
@@ -925,7 +925,7 @@ for t in tqdm(range(EPOCHS)):
     val_con_ind_ipcws.append(curr_val_con_ind_ipcw)
     
     
-    if t==EPOCHS-1 or t % (EPOCHS // 4) == 0:
+    if t==EPOCHS-1 or t % (EPOCHS // 20) == 0:
         print(f"\nEpoch {t+1}\n-------------------------------")
         print(f"Current learning rate: {optimizer.param_groups[0]['lr']:0.3e}")
         print(f"Training loss: {curr_train_loss:0.6f}, Validation loss: {curr_val_loss:0.6f}")
@@ -942,14 +942,22 @@ print('-'*50)
 
 title = "Dropout probability 50%"
 ns = 0
-ne = 3000
+ne = 750
 
 plt.figure()
 plot_losses(train_losses, val_losses, title, norm = True, ran = [ns, ne])
 
+# %%
+
+df = pd.DataFrame([[val.cpu().numpy() for val in train_losses], [val.cpu().numpy() for val in val_losses]], index=["train_losses", "validation_losses"]).transpose()
+df.to_csv(data_dir + "\\losses_example")
+
+# %%
+
 plt.figure()
 x_axis = np.linspace(1, len(val_con_ind_ipcws), len(val_con_ind_ipcws))
-plt.scatter(x_axis, [val.cpu() for val in val_con_ind_ipcws], label="test", color = 'C0', s = 20)
+plt.scatter(x_axis[ns:ne], [val.cpu() for val in val_con_ind_ipcws][ns:ne], label="test", color = 'C0')
+plt.scatter(x_axis[ns:ne], [val.cpu() for val in val_con_inds][ns:ne], label="test", color = 'C1', s = 20)
 plt.xlabel("Epochs")
 plt.ylabel("IPCW Index")
 plt.title(title)
