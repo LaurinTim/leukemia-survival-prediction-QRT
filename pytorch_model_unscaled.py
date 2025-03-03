@@ -497,58 +497,6 @@ class TransMolecular(object):
         
         return res
 
-# %%
-
-class TorchStandardScaler:
-    def fit(self, tns):
-        '''
-
-        Parameters
-        ----------
-        tns : torch.tensor
-            Tensor to scale.
-
-        Returns
-        -------
-        Sets self.mean and self.std to the mean and standard deviation of tns.
-
-        '''
-        self.mean = tns.mean(0, keepdim=True)
-        self.std = tns.std(0, unbiased=False, keepdim=True)
-    def transform(self, tns):
-        '''
-
-        Parameters
-        ----------
-        tns : torch.tensor
-            Tensor to scale.
-
-        Returns
-        -------
-        tns : torch.tensor
-            Scaled tensor.
-
-        '''
-        tns -= self.mean
-        tns /= (self.std + 1e-7)
-        return tns
-    def fit_transform(self, tns):
-        '''
-
-        Parameters
-        ----------
-        tns : tns
-            Tensor to scale.
-
-        Returns
-        -------
-        torch.tensor
-            Scaled tensor.
-
-        '''
-        self.fit(tns)
-        return self.transform(tns)
-
 # %% Generate a custom dataset
 
 class DatasetGen(Dataset):
@@ -647,11 +595,9 @@ class DatasetGen(Dataset):
         self.__get_gene_embeddings()
         self.__get_gene_map()
         
-        self.X = torch.zeros((self.patient_num, len(clinical_features)+3+2+self.chromosome_embedding_dim+self.gene_embedding_dim+3))
-        self.y = torch.zeros((self.patient_num, 2))
-        
-        self.__getData__()
-        
+        self.X = np.zeros((self.patient_num, len(clinical_features)+3+2+self.chromosome_embedding_dim+self.gene_embedding_dim+3))
+        self.y = np.zeros((self.patient_num, 2))
+                
     def __len__(self):
         '''
 
@@ -662,43 +608,6 @@ class DatasetGen(Dataset):
 
         '''
         return self.patient_num
-    
-    def __getData__(self):
-        '''
-
-        Returns
-        -------
-        Fill self.X with the transformed clinical and molecular info.
-        Fill self.y with the transformed status.
-
-        '''
-        for idx in range(self.patient_num):
-            status_item = self.status_arr[idx]
-            patient_id = status_item[0]
-            clinical_item = self.clinical_arr[idx]
-            molecular_item = self.molecular_split[idx]
-            
-            if self.status_transform:
-                status_item = self.status_transform(status_item)
-            
-            if self.clinical_transform and self.molecular_transform:
-                clinical_item = self.clinical_transform(clinical_item)
-                if patient_id in self.molecular_void_ids:
-                    molecular_item = torch.zeros(2+self.chromosome_embedding_dim+self.gene_embedding_dim+3)
-                else:
-                    molecular_item = self.molecular_transform(molecular_item, 
-                                 self.global_median_survival, self.effects_survival_map, 
-                                 self.chromosome_to_idx, self.chromosome_embeddings, 
-                                 self.gene_to_idx, self.gene_embeddings, 
-                                 self.chromosome_embedding_dim, self.gene_embedding_dim)
-                                            
-                info = torch.cat((clinical_item, molecular_item))
-                
-            self.X[idx] = info
-            self.y[idx] = status_item
-            
-        scaler = TorchStandardScaler()
-        self.X = scaler.fit_transform(self.X)
          
     def __getitem__(self, idx):
         '''
@@ -717,13 +626,6 @@ class DatasetGen(Dataset):
             containing the event indicator (bool) and the survival time (float) 
             of the patient.
 
-        '''
-        
-        data_item = self.X[idx]
-        status_item = (bool(self.y[idx,0]), self.y[idx,1])
-        
-        return data_item, status_item
-        
         '''
         status_item = self.status_arr[idx]
         patient_id = status_item[0]
@@ -749,7 +651,7 @@ class DatasetGen(Dataset):
         self.X[idx] = info.cpu().numpy()
         self.y[idx] = status_item.cpu().numpy()
             
-        return info, (bool(status_item[0]), status_item[1])'''
+        return info, (bool(status_item[0]), status_item[1])
     
     def __get_unique_chromosomes(self) -> None:
         '''
@@ -851,10 +753,10 @@ class DatasetGen(Dataset):
 
 set_random_seed(1)
 
-a = DatasetGen(dat.status_arr, dat.clinical_arr, dat.molecular_arr, dat.effects_survival_map, dat.molecular_void_ids, 
+b = DatasetGen(dat.status_arr, dat.clinical_arr, dat.molecular_arr, dat.effects_survival_map, dat.molecular_void_ids, 
                status_transformer = TransStatus(), clinical_transformer = TransClinical(), molecular_transformer = TransMolecular())
 
-train_data, val_data, test_data = torch.utils.data.random_split(a, [0.6, 0.2, 0.2], generator=torch.Generator(device=device))
+train_data, val_data, test_data = torch.utils.data.random_split(b, [0.6, 0.2, 0.2], generator=torch.Generator(device=device))
 
 dataloader_train = DataLoader(train_data, batch_size = BATCH_SIZE)
 dataloader_val = DataLoader(val_data, batch_size = BATCH_SIZE)
@@ -903,16 +805,16 @@ class NeuralNetwork(torch.nn.Module):
             torch.nn.BatchNorm1d(num_features),
             torch.nn.Linear(74, 250),
             torch.nn.Tanh(),
-            torch.nn.Dropout(p=0.3),
+            torch.nn.Dropout(p=0.5),
             torch.nn.Linear(250, 250),
             torch.nn.Tanh(),
-            torch.nn.Dropout(p=0.3),
+            torch.nn.Dropout(p=0.5),
             torch.nn.Linear(250, 250),
             torch.nn.Tanh(),
-            torch.nn.Dropout(p=0.3),
+            torch.nn.Dropout(p=0.5),
             torch.nn.Linear(250, 250),
             torch.nn.Tanh(),
-            torch.nn.Dropout(p=0.3),
+            torch.nn.Dropout(p=0.5),
             torch.nn.Linear(250, 1),
             #torch.nn.Linear()
         )
@@ -927,8 +829,8 @@ cox_model = NeuralNetwork()
 # %% Define learning rate, epoch and optimizer
 
 LEARNING_RATE = 1e-4
-EPOCHS = 200
-optimizer = torch.optim.AdamW(cox_model.parameters(), lr=LEARNING_RATE, weight_decay=0.1)
+EPOCHS = 50
+optimizer = torch.optim.AdamW(cox_model.parameters(), lr=LEARNING_RATE, weight_decay=0.7)
 con = ConcordanceIndex()
 
 # %%
@@ -964,14 +866,7 @@ def train_loop(dataloader, model, optimizer):
     train_times.append(ttime()-start_time)
     
     curr_loss /= weight
-    
-    model.eval()
-    with torch.no_grad():
-        pred = model(train_x)
-        weight_ipcw = get_ipcw(train_event, train_time, train_time)
-        con_ind_ipcw = con(pred.float(), train_event, train_time.float(), weight = weight_ipcw)
-    
-    return curr_loss, con_ind_ipcw
+    return curr_loss
 
 def val_loop(model, epoch):
     global best_ind, best_ipcw_ind, best_epoch, best_loss, best_model
@@ -1016,20 +911,18 @@ val_losses = []
 
 val_con_inds = []
 val_con_ind_ipcws = []
-train_con_ind_ipcws = []
 
 for t in tqdm(range(EPOCHS)):
-    curr_train_loss, curr_train_con_ind_ipcw = train_loop(dataloader_train, cox_model, optimizer)
+    curr_train_loss = train_loop(dataloader_train, cox_model, optimizer)
     curr_val_loss, curr_val_con_ind, curr_val_con_ind_ipcw = val_loop(cox_model, t)
     
     train_losses.append(curr_train_loss)
     val_losses.append(curr_val_loss)
     
-    adjust_learning_rate(optimizer, val_losses[-5:], t, initial_lr=optimizer.param_groups[0]['lr'], decay_factor=0.5, epoch_interval=10, min_lr=5e-6)
+    adjust_learning_rate(optimizer, val_losses[-5:], t, initial_lr=optimizer.param_groups[0]['lr'], decay_factor=0.5, epoch_interval=10, min_lr=1e-5)
     
     val_con_inds.append(curr_val_con_ind)
     val_con_ind_ipcws.append(curr_val_con_ind_ipcw)
-    train_con_ind_ipcws.append(curr_train_con_ind_ipcw)
     
     
     if t==EPOCHS-1 or t % (EPOCHS // 4) == 0:
@@ -1047,7 +940,7 @@ print('-'*50)
 
 # %% Plot the training and test losses
 
-title = "Dropout probability 40%"
+title = "Dropout probability 50%"
 ns = 0
 ne = 3000
 
@@ -1056,8 +949,7 @@ plot_losses(train_losses, val_losses, title, norm = True, ran = [ns, ne])
 
 plt.figure()
 x_axis = np.linspace(1, len(val_con_ind_ipcws), len(val_con_ind_ipcws))
-plt.scatter(x_axis[ns:ne], [val.cpu() for val in train_con_ind_ipcws][ns:ne], label="train", color = 'C0', s = 20)
-plt.scatter(x_axis[ns:ne], [val.cpu() for val in val_con_ind_ipcws][ns:ne], label="test", color = 'C1', s = 20)
+plt.scatter(x_axis, [val.cpu() for val in val_con_ind_ipcws], label="test", color = 'C0', s = 20)
 plt.xlabel("Epochs")
 plt.ylabel("IPCW Index")
 plt.title(title)
