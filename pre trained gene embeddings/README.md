@@ -1,0 +1,1 @@
+The pretrained gene embeddings were taken from https://github.com/jingcheng-du/Gene2vec and they were created as described in https://doi.org/10.1186/s12864-018-5370-x. From all theses embeddings, the ones for genes that occur in our data are selected and saved into gene2vec_relevant_genes.txt.

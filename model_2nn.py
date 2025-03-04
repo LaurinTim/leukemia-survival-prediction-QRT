@@ -126,22 +126,6 @@ test_time = test_d[1][:,1]
 
 # %%
 
-scaling_train = torch.tensor([[float(len(train_xm[0])/max(1,len([val for val in bal if val.sum()!=0])))] for bal in train_xm])
-scaling_val = torch.tensor([[float(len(val_xm[0])/max(1,len([val for val in bal if val.sum()!=0])))] for bal in val_xm])
-scaling_test = torch.tensor([[float(len(test_xm[0])/max(1,len([val for val in bal if val.sum()!=0])))] for bal in test_xm])
-
-# %%
-
-scaling_train_batches = []
-for i, batch in enumerate(dataloader_train):
-    curr_data, _ = batch
-    curr_mol = curr_data[1]
-    curr_scaling = torch.tensor([[float(len(curr_mol[0])/max(1,len([val for val in bal if val.sum()!=0])))] for bal in curr_mol])
-    #scaling_train[i] = curr_scaling
-    scaling_train_batches.append(curr_scaling)
-
-# %%
-
 mut_num_train = torch.tensor([max(1,len([val for val in bal if val.sum()!=0])) for bal in train_xm])
 mut_num_val = torch.tensor([max(1,len([val for val in bal if val.sum()!=0])) for bal in val_xm])
 mut_num_test = torch.tensor([max(1,len([val for val in bal if val.sum()!=0])) for bal in test_xm])
@@ -177,7 +161,7 @@ def masked_mean_pooling(embeddings, lengths):
 
 # %%
 
-dropout_prob = 0.0
+dropout_prob = 0.1
 
 # Branch to process clinical data (one row per patient)
 class ClinicalBranch(torch.nn.Module):
@@ -187,7 +171,7 @@ class ClinicalBranch(torch.nn.Module):
             torch.nn.BatchNorm1d(9),
             torch.nn.Linear(9, 20),
             torch.nn.ReLU(),
-            torch.nn.Dropout(p=dropout_prob),
+            #torch.nn.Dropout(p=dropout_prob),
             #torch.nn.Linear(20, 40),
             #torch.nn.Tanh(),
             #torch.nn.Dropout(p=dropout_prob),
@@ -282,7 +266,7 @@ train_con_ind_ipcws = []
 
 # %% Define learning rate, epoch and optimizer
 
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 5e-5
 EPOCHS = 50
 optimizer = torch.optim.AdamW(cox_model.parameters(), lr=LEARNING_RATE, weight_decay=0.2)
 con = ConcordanceIndex()
@@ -377,7 +361,7 @@ for t in tqdm(range(EPOCHS)):
     train_losses.append(curr_train_loss)
     val_losses.append(curr_val_loss)
     
-    u.adjust_learning_rate(optimizer, val_losses[-5:], t, initial_lr=optimizer.param_groups[0]['lr'], decay_factor=0.5, epoch_interval=20, min_lr=1e-5)
+    u.adjust_learning_rate(optimizer, val_losses[-5:], t, initial_lr=optimizer.param_groups[0]['lr'], decay_factor=0.5, epoch_interval=20, min_lr=2.5e-5)
     
     val_con_inds.append(curr_val_con_ind)
     val_con_ind_ipcws.append(curr_val_con_ind_ipcw)
@@ -420,100 +404,7 @@ plt.show()
 
 # %%
 
-'''
-Dropout probablity 70%:
-    --------------------------------------------------
-    Best Epoch: 100
-    Best Validation Loss: 5.879705
-    Best Concordance Index: 0.7204
-    Best IPCW Concordance Index: 0.6942
-    --------------------------------------------------
-    
-    Comment: IPCW index still going up at the end
-    
-Dropout probablity 60%:
-    --------------------------------------------------
-    Best Epoch: 89
-    Best Validation Loss: 5.864575
-    Best Concordance Index: 0.7238
-    Best IPCW Concordance Index: 0.6948
-    --------------------------------------------------
-    
-Dropout probablity 50%:
-    --------------------------------------------------
-    Best Epoch: 80
-    Best Validation Loss: 5.864045
-    Best Concordance Index: 0.7205
-    Best IPCW Concordance Index: 0.6917
-    --------------------------------------------------
-    
-Dropout probablity 40%:
-    --------------------------------------------------
-    Best Epoch: 84
-    Best Validation Loss: 5.861908
-    Best Concordance Index: 0.7222
-    Best IPCW Concordance Index: 0.6963
-    --------------------------------------------------
-    
-Dropout probablity 30%:
-    --------------------------------------------------
-    Best Epoch: 96
-    Best Validation Loss: 5.863719
-    Best Concordance Index: 0.7203
-    Best IPCW Concordance Index: 0.6966
-    --------------------------------------------------
-    
-Dropout probablity 20%:
-    --------------------------------------------------
-    Best Epoch: 16
-    Best Validation Loss: 5.852377
-    Best Concordance Index: 0.7258
-    Best IPCW Concordance Index: 0.6962
-    --------------------------------------------------
-    
-Dropout probablity 10%:
-    --------------------------------------------------
-    Best Epoch: 14
-    Best Validation Loss: 5.851727
-    Best Concordance Index: 0.7253
-    Best IPCW Concordance Index: 0.6971
-    --------------------------------------------------
-    
-Dropout probablity 0%:
-    --------------------------------------------------
-    Best Epoch: 11
-    Best Validation Loss: 5.850536
-    Best Concordance Index: 0.7259
-    Best IPCW Concordance Index: 0.6974
-    --------------------------------------------------
-    
-'''
-
-# %%
-
-'''
-IPCW Concordance Index over 0.69 reached for:
-    random seed = 1
-    lr = 1e-4
-    weight_decay = 0.1
-    100 epochs
-    
-    torch.nn.BatchNorm1d(num_features),
-    torch.nn.Linear(74, 250),
-    torch.nn.Tanh(),
-    torch.nn.Dropout(p=0.7),
-    torch.nn.Linear(250, 250),
-    torch.nn.Tanh(),
-    torch.nn.Dropout(p=0.7),
-    torch.nn.Linear(250, 250),
-    torch.nn.Tanh(),
-    torch.nn.Dropout(p=0.7),
-    torch.nn.Linear(250, 250),
-    torch.nn.Tanh(),
-    torch.nn.Dropout(p=0.7),
-    torch.nn.Linear(250, 1),
-    
-'''
+#IPCW index over 0.7 reached for validation with dropout 0
 
 
 

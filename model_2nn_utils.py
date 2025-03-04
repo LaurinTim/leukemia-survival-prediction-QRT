@@ -356,9 +356,7 @@ class TransClinical(object):
             to high risk. If all 3 are 0 then there is no information about 
             the cytogenetics of the patient available.
 
-        '''
-        clinical_features=np.array(['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES'])
-        
+        '''        
         res = torch.zeros(clinical_features.shape[0]+3)
         
         for i in range(clinical_features.shape[0]):
@@ -539,7 +537,7 @@ class DatasetGen(Dataset):
                  status_columns=np.array(['ID', 'OS_YEARS', 'OS_STATUS']), 
                  clinical_columns=np.array(['ID', 'CENTER', 'BM_BLAST', 'WBC', 'ANC', 'MONOCYTES', 'HB', 'PLT', 'CYTOGENETICS']), 
                  molecular_columns=np.array(['ID', 'CHR', 'START', 'END', 'REF', 'ALT', 'GENE', 'PROTEIN_CHANGE', 'EFFECT', 'VAF', 'DEPTH']),
-                 clinical_features=np.array(['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES']), 
+                 clinical_features=clinical_features, 
                  chromosome_embedding_dim=10, gene_embedding_dim=50, chromosomes_min_occurences=5,
                  status_transformer=None, clinical_transformer=None, molecular_transformer=None):
         '''
@@ -682,8 +680,8 @@ class DatasetGen(Dataset):
             self.X_molecular.append(molecular_item)
             self.y[idx] = status_item
             
-        scaler = TorchStandardScaler()
-        self.X_clinical = scaler.fit_transform(self.X_clinical)
+        #scaler = TorchStandardScaler()
+        #self.X_clinical = scaler.fit_transform(self.X_clinical)
          
     def __getitem__(self, idx):
         '''
