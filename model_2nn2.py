@@ -457,7 +457,7 @@ def train_all_loop(dataloader, model, optimizer):
     
     curr_loss = torch.tensor(0.0)
     weight = 0
-    start_time = ttime()
+
     for i, batch in enumerate(dataloader):
         x, status = batch
         status = status.T
@@ -474,7 +474,6 @@ def train_all_loop(dataloader, model, optimizer):
         weight += len(x)/BATCH_SIZE
         
     optimizer.zero_grad()
-    train_times.append(ttime()-start_time)
     
     curr_loss /= weight
     
