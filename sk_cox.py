@@ -195,7 +195,7 @@ scores = fit_and_score_features(X_train, y_train)
 
 # %%
 
-vals = pd.Series(scores, index=features+["Effect_survival", "number_of_mutations"]+["GENE::"+str(i) for i in range(embedding_dim)]).sort_values(ascending=False)
+vals1 = pd.Series(scores, index=features+["Effect_survival", "number_of_mutations"]+["GENE::"+str(i) for i in range(embedding_dim)]).sort_values(ascending=False)
 
 # %% Use one hot encoding for the different effects
 

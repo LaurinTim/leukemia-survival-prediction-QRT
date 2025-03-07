@@ -743,7 +743,7 @@ class Dataset():
         return X, y
 
 # %%
-
+'''
 set_random_seed(1)    
 
 dd = Dataset(file_status, file_clinical, file_molecular)
@@ -1023,7 +1023,7 @@ for i in range(200):
     
 # %%
 
-print(np.array_equal(X[129],np.array(Xc)[129]))
+print(np.array_equal(X[129],np.array(Xc)[129]))'''
     
     
     
