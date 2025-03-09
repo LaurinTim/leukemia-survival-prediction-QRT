@@ -23,8 +23,8 @@ status_file = data_dir+'\\target_train.csv' #containts information about the sta
 clinical_file = data_dir+'\\X_train\\clinical_train.csv' #contains clinical information of patients used for training
 molecular_file = data_dir+'\\X_train\\molecular_train.csv' #contains molecular information of patients used for training
 #path to the test files used for submissions
-file_clinical_test = data_dir+'\\X_test\\clinical_test.csv' #contains clinical information of patients used for the submission
-file_molecular_test = data_dir+'\\X_test\\molecular_test.csv' #contains molecular information of patients used for the submission
+clinical_file_sub = data_dir+'\\X_test\\clinical_test.csv' #contains clinical information of patients used for the submission
+molecular_file_sub = data_dir+'\\X_test\\molecular_test.csv' #contains molecular information of patients used for the submission
 
 #features from the clinical data we want to include in the model
 clinical_columns = ["ID", "CENTER", "BM_BLAST", "WBC", "ANC", "MONOCYTES", "HB", "PLT", "CYTOGENETICS"]
@@ -178,7 +178,7 @@ def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_tr
         else:
             #set the value in the map for the current effect to the median survival time obtained using the Kaplan Meier estimate
             effect_survival_map[effect] = kmf.median_survival_time_
-    
+                
     return effect_survival_map
 
 def set_random_seed(random_seed) -> None:
@@ -194,6 +194,7 @@ class DatasetPrep():
         self.clinical_df = clinical_df
         self.molecular_df = molecular_df
         self.molecular_dummies_columns = molecular_dummies_columns
+        self.effects_map = effects_map
         
         self.status_df = self.status_df.sort_values(by=["ID"]).reset_index(drop=True)
         self.patient_ids = np.array(self.status_df.loc[:,"ID"])
@@ -202,7 +203,8 @@ class DatasetPrep():
         self.status_arr = np.array(self.status_df)
         
         self.clinical_df = self.__valid_patients_df(self.clinical_df)
-        self.clinical_df = self.__fillna_df(self.clinical_df, ["BM_BLAST", "WBC", "ANC", "MONOCYTES", "HB", "PLT"])
+        self.clinical_df_nan = self.clinical_df
+        self.clinical_df = self.__fillna_df(self.clinical_df, self.clinical_df_nan, ["BM_BLAST", "WBC", "ANC", "MONOCYTES", "HB", "PLT"])
         self.clinical_df = self.clinical_df.sort_values(by=["ID"]).reset_index(drop=True)
         self.clinical_columns = np.array(self.clinical_df.columns)
         self.clinical_arr = self.clinical_df.to_numpy(copy=True)
@@ -210,8 +212,9 @@ class DatasetPrep():
         self.clinical_arr = np.array(self.clinical_df)
         
         self.molecular_df = self.__valid_patients_df(self.molecular_df)
-        self.molecular_df = self.__fillna_df(self.molecular_df, ["START", "END", "VAF", "DEPTH"])
-        self.molecular_df = pd.get_dummies(molecular_df, columns = self.molecular_dummies_columns)
+        self.molecular_df_nan = self.molecular_df
+        self.molecular_df = self.__fillna_df(self.molecular_df, self.molecular_df_nan, ["START", "END", "VAF", "DEPTH"])
+        self.molecular_df = pd.get_dummies(self.molecular_df, columns = self.molecular_dummies_columns)
         
         self.molecular_df.insert(7, "EFFECT_MEDIAN_SURVIVAL", np.array(itemgetter(*np.array(self.molecular_df["EFFECT"]))(effects_map))) #* np.array(self.molecular_df["VAF"]))
         
@@ -237,7 +240,7 @@ class DatasetPrep():
         return_df = df[df.loc[:,"ID"].isin(self.patient_ids)]
         return return_df.reset_index(drop=True)
     
-    def __fillna_df(self, df, columns):
+    def __fillna_df(self, df, df_nan, columns):
         '''
 
         Parameters
@@ -254,8 +257,9 @@ class DatasetPrep():
             set to 0.
 
         '''
+        return_df = df.fillna({col: df_nan[col].mean() for col in df.select_dtypes(include=['float']).columns if col in columns})
         #return_df = df.fillna({col: df[col].median() for col in df.select_dtypes(include=['float']).columns})
-        return_df = df.fillna({col: 0 for col in df.select_dtypes(include=['float']).columns if col not in ["CHR"]})
+        #return_df = df.fillna({col: 0 for col in df.select_dtypes(include=['float']).columns if col not in ["CHR"]})
         return return_df
     
     def __molecular_id_fill(self) -> None:
@@ -287,6 +291,45 @@ class DatasetPrep():
         '''
         self.molecular_split = np.split(self.molecular_arr, np.unique(self.molecular_arr[:,0], return_index=True)[1][1:])
         
+    def submission_data_prep(self):
+        clinical_df_sub = pd.read_csv(clinical_file_sub)
+        #clinical_df_sub = pd.read_csv(clinical_file)
+        clinical_df_sub = self.__fillna_df(clinical_df_sub, self.clinical_df_nan, ["BM_BLAST", "WBC", "ANC", "MONOCYTES", "HB", "PLT"])
+        
+        clinical_sub_sort_index = [float(val[3:]) for val in list(clinical_df_sub.loc[:,"ID"])]
+        clinical_df_sub.insert(9, "sort_index", clinical_sub_sort_index)
+        clinical_df_sub = clinical_df_sub.sort_values(by=["sort_index"]).reset_index(drop=True)
+        clinical_df_sub = clinical_df_sub.drop(columns=["sort_index"])
+        
+        patient_ids_sub = np.array(clinical_df_sub.loc[:,"ID"])
+        patient_num_sub = patient_ids_sub.shape[0]
+        
+        molecular_df_sub = pd.read_csv(molecular_file_sub)
+        #molecular_df_sub = pd.read_csv(molecular_file)
+        molecular_df_sub = pd.get_dummies(molecular_df_sub, columns = self.molecular_dummies_columns)
+        molecular_df_sub = self.__fillna_df(molecular_df_sub, self.molecular_df_nan, ["START", "END", "VAF", "DEPTH"])
+                        
+        molecular_sub_sort_index = [float(val[3:]) for val in list(molecular_df_sub.loc[:,"ID"])]
+        molecular_df_sub.insert(11, "sort_index", molecular_sub_sort_index)
+        molecular_df_sub = molecular_df_sub.sort_values(by=["sort_index"]).reset_index(drop=True)
+        molecular_df_sub = molecular_df_sub.drop(columns=["sort_index"])
+        
+        global_median_survival = np.median(self.status_arr[:,1])
+        molecular_df_sub.insert(7, "EFFECT_MEDIAN_SURVIVAL", np.array([self.effects_map.get(val) if val in self.effects_map.keys() else global_median_survival for val in molecular_df_sub["EFFECT"]]))
+        
+        for curr_col in list(self.molecular_df.columns):
+            if not curr_col in molecular_df_sub.columns:
+                molecular_df_sub.insert(0, curr_col, np.zeros(len(molecular_df_sub)))
+                
+        for curr_col in list(molecular_df_sub.columns):
+            if not curr_col in self.molecular_df.columns:
+                molecular_df_sub = molecular_df_sub.drop(columns = [curr_col])
+        
+        molecular_df_sub = molecular_df_sub[self.molecular_df.columns]
+        molecular_df_sub = self.__fillna_df(molecular_df_sub, self.molecular_df_nan, ["START", "END", "VAF", "DEPTH"])
+                
+        return clinical_df_sub, molecular_df_sub
+        
 class Dataset():
     def __init__(self, status_df, clinical_df, molecular_df, min_occurences=5):
         self.status_df = status_df
@@ -301,18 +344,18 @@ class Dataset():
         self.molecular_arr = np.array(self.molecular_df)
         #self.molecular_split = np.split(self.molecular_arr, np.unique(self.molecular_arr[:,0], return_index=True)[1][1:])
         
-        self.X = np.zeros((self.patient_num, len(clinical_features)+len(cyto_markers)+self.molecular_df.shape[1]-5))
+        self.X = np.zeros((self.patient_num, len(clinical_features)+2+len(cyto_markers)+self.molecular_df.shape[1]+1))
         self.y = np.zeros((self.patient_num, 2))
         
         self.__getData()
         
         X_sum = np.sum(self.X.astype(bool), axis=0)
-        self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["CYTOGENETICS_"+val for val in cyto_markers] + 
-                                                                                  ["MUTATIONS_NUMBER", "MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + list(self.molecular_df.columns)[8:]])
+        self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
+                                                                                  ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
         
         sparse_features = self.X.columns
-        sparse_features = sparse_features[X_sum < min_occurences]
-        self.X = self.X.drop(columns=sparse_features)
+        self.sparse_features = sparse_features[X_sum < min_occurences]
+        self.X = self.X.drop(columns=self.sparse_features)
         
     def __getData(self) -> None:
         for idx in range(self.patient_num):
@@ -336,24 +379,54 @@ class Dataset():
             
         status_item = (bool(curr_status[2]), curr_status[1])
         
-        clinical_item = np.zeros(len(clinical_features)+len(cyto_markers))
+        clinical_item = np.zeros(len(clinical_features)+2+len(cyto_markers))
         clinical_item[0:len(clinical_features)] = curr_clinical[clinical_indices]
-        curr_cyto_risk = self.cyto_patient_risk(curr_clinical[8])
-        clinical_item[len(clinical_features):] = curr_cyto_risk
+        curr_cyto = curr_clinical[8]
+        if str(curr_cyto)!="nan":
+            curr_cyto = curr_cyto.strip().upper()
+            if ",XX," == curr_cyto[2:6] or ",XX[" == curr_cyto[2:6] or "46,XX" == curr_cyto:
+                clinical_item[len(clinical_features)] = 1
+            if ",XY," == curr_cyto[2:6] or ",XY[" == curr_cyto[2:6] or "46,XY" == curr_cyto:
+                clinical_item[len(clinical_features)+1] = 1
+            if "~" == curr_cyto[2]:
+                if ",XX," == curr_cyto[5:9] or ",XX[" == curr_cyto[5:9]:
+                    clinical_item[len(clinical_features)] = 1
+                if ",XY," == curr_cyto[5:9] or ",XY[" == curr_cyto[5:9]:
+                    clinical_item[len(clinical_features)+1] = 1
+        curr_cyto_risk = self.cyto_patient_risk(curr_cyto)
+        clinical_item[len(clinical_features)+2:] = curr_cyto_risk
         
         curr_molecular = np.array(self.molecular_df[self.molecular_df["ID"]==curr_patient_id])
         
         if len(curr_molecular)==0:
-            molecular_item = np.zeros(self.molecular_df.shape[1]-5)
+            molecular_item = np.zeros(self.molecular_df.shape[1]+1)
         
         else:
-            molecular_item = np.zeros((len(curr_molecular), len(curr_molecular[0])-5))
+            molecular_item = np.zeros((len(curr_molecular), len(curr_molecular[0])+1))
             molecular_item[:,1] = curr_molecular[:,2]-curr_molecular[:,1]
-            molecular_item[:,3:] = curr_molecular[:,8:]
+            molecular_lengths = molecular_item[:,1]
+            molecular_item[:,11:] = curr_molecular[:,10:]
             molecular_item = np.sum(molecular_item, axis=0)
+            
             molecular_item[0] = len(curr_molecular)
-            molecular_item[2] = np.sum(curr_molecular[:,7])
-            #molecular_item[2:] = np.array([min(1,val) for val in molecular_item[2:]])
+            molecular_item[3] = np.sum(curr_molecular[:,7])
+            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
+            if str(molecular_item[2]) == "nan":
+                molecular_item[2] = 0
+            
+            molecular_ref = curr_molecular[:,3]
+            molecular_alt = curr_molecular[:,4]
+            molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
+            molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
+            
+            molecular_vaf = curr_molecular[:,8]
+            molecular_depth = curr_molecular[:,9]
+            
+            molecular_item[7] = np.sum(molecular_vaf)
+            molecular_item[8] = np.median(molecular_vaf)*len(molecular_vaf)
+            molecular_item[9] = np.sum(molecular_depth)
+            molecular_item[10] = np.median(molecular_depth)*len(molecular_depth)
         
         item = np.append(clinical_item, molecular_item)
         
@@ -385,6 +458,108 @@ class Dataset():
                 res[i] = 1
         
         return res
+    
+    def classify_mutation(self, ref, alt):
+        """
+        Classify a mutation based on the REF and ALT values.
+        
+        Returns:
+            mutation_type (str): One of 'substitution', 'deletion', or 'insertion'
+            mutation_descriptor (str): A string describing the mutation (e.g., "A>G", "del_16", "ins_3")
+            length_change (int): The difference in length (0 for substitutions)
+        """
+        
+        res = np.zeros(3)
+        
+        if str(ref)=="nan" or str(alt)=="nan":
+            return res
+        
+        if len(ref) == len(alt):
+            # Substitution
+            res[0] = 1
+            if ref=="-":
+                res[2] = 1
+            if alt=="-":
+                res[1] = 1
+        elif len(ref) > len(alt):
+            # Deletion: nucleotides removed
+            res[1] = 1
+        else:
+            # Insertion: extra nucleotides added
+            res[2] = 1
+        
+        return res
+    
+    def submission_data(self, clinical_df_sub, molecular_df_sub):
+        patient_ids_sub = np.array(clinical_df_sub.loc[:,"ID"])
+        patient_num_sub = patient_ids_sub.shape[0]
+        
+        X_sub = np.zeros((patient_num_sub, len(clinical_features)+2+len(cyto_markers)+self.molecular_df.shape[1]+1))
+        
+        for i in range(patient_num_sub):
+            curr_patient_id = patient_ids_sub[i]
+            curr_clinical = clinical_df_sub[clinical_df_sub["ID"] == curr_patient_id]
+            curr_molecular = molecular_df_sub[molecular_df_sub["ID"] == curr_patient_id]
+            X_sub[i] = self.__getItem_sub(np.array(curr_clinical)[0], np.array(curr_molecular))
+            
+        X_sub = pd.DataFrame(X_sub, index=np.arange(patient_num_sub), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
+                                                                                  ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
+            
+        X_sub = X_sub.drop(columns=self.sparse_features)
+        
+        return X_sub, patient_ids_sub
+        
+    def __getItem_sub(self, curr_clinical, curr_molecular):
+        curr_patient_id = curr_clinical[0]
+        clinical_item = np.zeros(len(clinical_features)+2+len(cyto_markers))
+        clinical_item[0:len(clinical_features)] = curr_clinical[clinical_indices]
+        curr_cyto = curr_clinical[8]
+        if str(curr_cyto)!="nan":
+            curr_cyto = curr_cyto.strip().upper()
+            if ",XX," == curr_cyto[2:6] or ",XX[" == curr_cyto[2:6] or "46,XX" == curr_cyto:
+                clinical_item[len(clinical_features)] = 1
+            if ",XY," == curr_cyto[2:6] or ",XY[" == curr_cyto[2:6] or "46,XY" == curr_cyto:
+                clinical_item[len(clinical_features)+1] = 1
+            if "~" == curr_cyto[2]:
+                if ",XX," == curr_cyto[5:9] or ",XX[" == curr_cyto[5:9]:
+                    clinical_item[len(clinical_features)] = 1
+                if ",XY," == curr_cyto[5:9] or ",XY[" == curr_cyto[5:9]:
+                    clinical_item[len(clinical_features)+1] = 1
+        curr_cyto_risk = self.cyto_patient_risk(curr_cyto)
+        clinical_item[len(clinical_features)+2:] = curr_cyto_risk
+                
+        if len(curr_molecular)==0:
+            molecular_item = np.zeros(self.molecular_df.shape[1]+1)
+        
+        else:
+            molecular_item = np.zeros((len(curr_molecular), len(curr_molecular[0])+1))
+            molecular_item[:,1] = curr_molecular[:,2]-curr_molecular[:,1]
+            molecular_lengths = molecular_item[:,1]
+            molecular_item[:,11:] = curr_molecular[:,10:]
+            molecular_item = np.sum(molecular_item, axis=0)
+            
+            molecular_item[0] = len(curr_molecular)
+            molecular_item[3] = np.sum(curr_molecular[:,7])
+            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
+            if str(molecular_item[2]) == "nan":
+                molecular_item[2] = 0
+            
+            molecular_ref = curr_molecular[:,3]
+            molecular_alt = curr_molecular[:,4]
+            molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
+            molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
+            
+            molecular_vaf = curr_molecular[:,8]
+            molecular_depth = curr_molecular[:,9]
+            molecular_item[7] = np.sum(molecular_vaf)
+            molecular_item[8] = np.median(molecular_vaf)*len(molecular_vaf)
+            molecular_item[9] = np.sum(molecular_depth)
+            molecular_item[10] = np.median(molecular_depth)*len(molecular_depth)
+        
+        item = np.append(clinical_item, molecular_item)
+        
+        return item
 
 
         
