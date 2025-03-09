@@ -33,6 +33,8 @@ clinical_indices = np.array([2, 6, 7, 3, 4, 5])
 
 molecular_columns = ["ID", "CHR", "START", "END", "REF", "ALT", "GENE", "PROTEIN_CHANGE", "EFFECT", "VAF", "DEPTH"]
 
+cyto_markers = ["46,XX", "46,XY", "T(8;21)", "INV(16)", "T(15;17)", "T(16;16)", "T((8;21)", "MONOSOMY 7", "-7", "COMPLEX", "MONOSOMY 5", "-5", "DEL(5Q)", "DEL(7Q)"]
+
 def plot_losses(train_losses, test_losses, title: str="Cox", norm=True, ran=None) -> None:
     '''
 
@@ -299,17 +301,17 @@ class Dataset():
         self.molecular_arr = np.array(self.molecular_df)
         #self.molecular_split = np.split(self.molecular_arr, np.unique(self.molecular_arr[:,0], return_index=True)[1][1:])
         
-        self.X = np.zeros((self.patient_num, len(clinical_features)+3+self.molecular_df.shape[1]-5))
+        self.X = np.zeros((self.patient_num, len(clinical_features)+len(cyto_markers)+self.molecular_df.shape[1]-5))
         self.y = np.zeros((self.patient_num, 2))
         
         self.__getData()
         
-        X_sum = np.sum(self.X, axis=0)
-        self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["CRYO_LOW", "CRYO_MEDIUM", "CRYO_HIGH"] + 
+        X_sum = np.sum(self.X.astype(bool), axis=0)
+        self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["CYTOGENETICS_"+val for val in cyto_markers] + 
                                                                                   ["MUTATIONS_NUMBER", "MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + list(self.molecular_df.columns)[8:]])
         
-        sparse_features = self.X.columns[11:]
-        sparse_features = sparse_features[X_sum[11:] < min_occurences]
+        sparse_features = self.X.columns
+        sparse_features = sparse_features[X_sum < min_occurences]
         self.X = self.X.drop(columns=sparse_features)
         
     def __getData(self) -> None:
@@ -334,10 +336,10 @@ class Dataset():
             
         status_item = (bool(curr_status[2]), curr_status[1])
         
-        clinical_item = np.zeros(len(clinical_features)+3)
+        clinical_item = np.zeros(len(clinical_features)+len(cyto_markers))
         clinical_item[0:len(clinical_features)] = curr_clinical[clinical_indices]
         curr_cyto_risk = self.cyto_patient_risk(curr_clinical[8])
-        clinical_item[len(clinical_features)+curr_cyto_risk] = 1
+        clinical_item[len(clinical_features):] = curr_cyto_risk
         
         curr_molecular = np.array(self.molecular_df[self.molecular_df["ID"]==curr_patient_id])
         
@@ -356,7 +358,7 @@ class Dataset():
         item = np.append(clinical_item, molecular_item)
         
         return item, status_item
-        
+    
     def cyto_patient_risk(self, cyto):
         '''
 
@@ -372,26 +374,19 @@ class Dataset():
 
         '''
         if str(cyto)=="nan":
-            return 1
-            
+            return np.zeros(len(cyto_markers))
+        
         cyto=cyto.strip().upper()
         
-        favorable_markers = ["T(8;21)", "INV(16)", "T(15;17)", "T(16;16)", "T((8;21)"]
-        adverse_markers = ["MONOSOMY 7", "-7", "COMPLEX", "MONOSOMY 5", "-5", "DEL(5Q)", "DEL(7Q)"]
+        res = np.zeros(len(cyto_markers))
         
-        if cyto in ["46,XX", "46,XY"]:
-            return 0
+        for i in range(len(cyto_markers)):
+            if cyto_markers[i] in cyto:
+                res[i] = 1
         
-        for marker in favorable_markers:
-            if marker in cyto:
-                return 0
-            
-        for marker in adverse_markers:
-            if marker in cyto:
-                return 2
-            
-        return 1
-        
+        return res
+
+
         
         
     
