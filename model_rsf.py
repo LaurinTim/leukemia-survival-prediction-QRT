@@ -91,7 +91,7 @@ vals = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Inde
 # %%
 
 # Select features based on a threshold
-threshold = 0.5
+threshold = 0.52
 use_cols = [i for i in vals.index if vals.loc[i[0]].iloc[0,1] >= threshold]
 
 # %%
@@ -116,7 +116,7 @@ print(ind1, indp1)
 # %%
 
 # Train Random Survival Forest model
-clf = RandomSurvivalForest(n_estimators=100, max_depth=20, min_samples_split=20, min_samples_leaf=3, n_jobs=-1, random_state=1)
+clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
 clf.fit(X_train1, y_train1)
 #threshold = 0.5
 
