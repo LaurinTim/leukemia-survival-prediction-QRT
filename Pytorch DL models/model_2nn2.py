@@ -34,7 +34,7 @@ file_molecular = data_dir+'\\X_train\\molecular_train.csv' #contains molecular i
 
 #set working directory
 import os
-os.chdir(data_dir)
+os.chdir(data_dir + "\\Pytorch DL models")
 
 #from pytorch_model_utils import * #get_device, set_random_seed, EmbeddingModel, plot_losses, compare_models, adjust_learning_rate, DataPrep, 
 import model_2nn2_utils as u
