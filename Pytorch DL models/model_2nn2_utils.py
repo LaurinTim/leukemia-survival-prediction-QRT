@@ -700,7 +700,7 @@ class DatasetGen(Dataset):
         #self.__get_gene_model()
         #self.__get_gene_embeddings()
         self.__get_gene_map()
-        self.gene_embeddings = pd.read_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\pre trained gene embeddings\\gene2vec_relevant_genes.txt")
+        self.gene_embeddings = pd.read_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\Pytorch DL models\\pre trained gene embeddings\\gene2vec_relevant_genes.txt")
         self.gene_embedding_dim = 200
         
         self.X_clinical = torch.zeros((self.patient_num, len(clinical_features)+3))
