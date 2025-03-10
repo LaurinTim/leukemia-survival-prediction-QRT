@@ -1,4 +1,4 @@
-# Pytoch DL models
+# leukemia-survival-prediction-QRT/Pytoch DL models
 In this directory there are different routines to get models which use deep learning. The most recent one is model_2nn2.py, older versions are in the "old models" directory.
 
 Because of the limited amount of available training data, it is not ideal to use deep learning and newer models use RandomSurvivalForest from sklearn. The deep learning models were mainly created for educational purposes.
