@@ -1,5 +1,5 @@
-# leukemia-survival-prediction
-Attempt to train model which predicts leukemia survival rate as outlined in https://challengedata.ens.fr/participants/challenges/162/.
+# leukaemia-survival-prediction
+Attempt to train model which predicts leukaemia survival rate as outlined in https://challengedata.ens.fr/participants/challenges/162/.
 
 Training data is in the X_train directory and the target in the target_train.csv file. The data for the submissions is in the X_train directory. The files for the submission are in the submission_files folder. Different models are saved in the saved_models folder.
 
