@@ -110,9 +110,22 @@ def cox_score(x, y, model):
     model.fit(x, y)
     return model.score(x, y), concordance_index_ipcw(y, y, model.predict(x))[0]
     
-def regression_score(df, model):    
+def regression_score(df, y, model):    
     model.fit(df, duration_col="duration", event_col="status")
-    return model.summary.loc[list(df.columns)[2], "p"]
+    pred = model.predict_partial_hazard(df)
+    ci = concordance_index_censored(y["status"], y["time"], pred)[0]
+    ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
+    
+    return ci, ci_ipcw
+    #return model.summary.loc[list(df.columns)[2], "p"]
+    
+def skl_score(X, y, model):
+    model.fit(X, y)
+    pred = model.predict(X)
+    ci = concordance_index_censored(y["status"], y["time"], pred)[0]
+    ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
+    
+    return ci, ci_ipcw
 
 def fit_and_score_features(X_df, y):
     '''
@@ -135,7 +148,7 @@ def fit_and_score_features(X_df, y):
     X = np.array(X_df)
     n_features = X.shape[1]
     features = list(X_df.columns)
-    scores = np.zeros((n_features, 2))
+    scores = np.zeros((n_features, 6))
     
     df = X_df.copy()
     
@@ -144,13 +157,15 @@ def fit_and_score_features(X_df, y):
         
     rsf_model = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
     PH_model = CoxPHFitter(penalizer=0.0)
+    skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
     
     for j in tqdm(range(n_features)):
         Xj = X[:, j : j + 1]
         scores[j,0], scores[j,1] = cox_score(Xj, y, rsf_model)
-        PHs = regression_score(df[["duration", "status", features[j]]], PH_model)
+        scores[j,2], scores[j,3] = regression_score(df[["duration", "status", features[j]]], y, PH_model)
+        scores[j,4], scores[j,5] = skl_score(Xj, y, skl_model)
         
-    return scores, PHs
+    return scores
 
 def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_train.csv', data_file_status=data_dir+'\\target_train.csv'):
     '''
