@@ -88,16 +88,44 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 # %%
 
 # Compute feature importance scores
-scores, s = u.fit_and_score_features(X_df, y)
+scores = u.fit_and_score_features(X_df, y)
 
 # Rank features based on their importance
-vals = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index"])
+vals = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
+                                                         "Lasso C-Index", "Lasso IPCW C-Index", "p score"])
+
+# %%
+
+X_df2 = X_df.copy()
+vals_ord = vals.sort_values("IPCW C-Index", axis=0)
+feature_order = list(vals_ord.index)
+scores = np.zeros((len(feature_order), 2))
+
+cox = RandomSurvivalForest()
+
+for i, curr_feature in tqdm(enumerate(feature_order), total=len(feature_order)):
+    cox.fit(np.array(X_df2), y)
+    pred = cox.predict(np.array(X_df2))
+    scores[i,0] = concordance_index_censored(y["status"], y["time"], pred)[0]
+    scores[i,1] = concordance_index_ipcw(y, y, pred)[0]
+    X_df2 = X_df2.drop(curr_feature, axis=1)
+    
+vals1 = pd.DataFrame(scores, index=feature_order, columns=["C-Index", "IPCW C-Index"])
+
+# %%
+
+cox = RandomSurvivalForest()
+
+cox.fit(np.array(X_df["DEPTH_SUM"]).reshape(-1,1), y)
+pred = cox.predict(np.array(X_df["DEPTH_SUM"]).reshape(-1,1))
+print(concordance_index_censored(y["status"], y["time"], pred)[0])
+print(concordance_index_ipcw(y, y, pred)[0])
 
 # %%
 
 # Select features based on a threshold
 threshold = 0.52
-use_cols = [i for i in vals.index if vals.loc[i[0]].iloc[0,1] >= threshold]
+use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold]
 
 # %%
 

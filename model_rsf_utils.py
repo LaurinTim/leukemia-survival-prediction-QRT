@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from sksurv.linear_model import CoxPHSurvivalAnalysis
+from sksurv.linear_model import CoxPHSurvivalAnalysis, CoxnetSurvivalAnalysis
 from tqdm import tqdm
 import random
 from operator import itemgetter
@@ -17,6 +17,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OrdinalEncoder
 from sksurv.ensemble import RandomSurvivalForest
 from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
+
+from scipy.stats import logrank
 
 #path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -116,10 +118,18 @@ def regression_score(df, y, model):
     ci = concordance_index_censored(y["status"], y["time"], pred)[0]
     ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
     
-    return ci, ci_ipcw
+    return ci, ci_ipcw, model.summary.loc[list(df.columns)[2], "p"]
     #return model.summary.loc[list(df.columns)[2], "p"]
     
 def skl_score(X, y, model):
+    model.fit(X, y)
+    pred = model.predict(X)
+    ci = concordance_index_censored(y["status"], y["time"], pred)[0]
+    ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
+    
+    return ci, ci_ipcw
+
+def lasso_score(X, y, model):
     model.fit(X, y)
     pred = model.predict(X)
     ci = concordance_index_censored(y["status"], y["time"], pred)[0]
@@ -148,22 +158,25 @@ def fit_and_score_features(X_df, y):
     X = np.array(X_df)
     n_features = X.shape[1]
     features = list(X_df.columns)
-    scores = np.zeros((n_features, 6))
+    scores = np.zeros((n_features, 9))
     
     df = X_df.copy()
     
     df.insert(0, "duration", list(y["time"]))
     df.insert(0, "status", list(y["status"]))
         
-    rsf_model = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
+    #rsf_model = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
+    rsf_model = RandomSurvivalForest()
     PH_model = CoxPHFitter(penalizer=0.0)
     skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
+    lasso_model = CoxnetSurvivalAnalysis()
     
     for j in tqdm(range(n_features)):
         Xj = X[:, j : j + 1]
         scores[j,0], scores[j,1] = cox_score(Xj, y, rsf_model)
-        scores[j,2], scores[j,3] = regression_score(df[["duration", "status", features[j]]], y, PH_model)
+        scores[j,2], scores[j,3], scores[j,-1] = regression_score(df[["duration", "status", features[j]]], y, PH_model)
         scores[j,4], scores[j,5] = skl_score(Xj, y, skl_model)
+        scores[j,6], scores[j,7] = skl_score(Xj, y, lasso_model)
         
     return scores
 
