@@ -112,7 +112,7 @@ def cox_score(x, y, model):
     
 def regression_score(df, model):    
     model.fit(df, duration_col="duration", event_col="status")
-    return model.summary
+    return model.summary.loc[list(df.columns)[2], "p"]
 
 def fit_and_score_features(X_df, y):
     '''
@@ -143,17 +143,7 @@ def fit_and_score_features(X_df, y):
     df.insert(0, "status", list(y["status"]))
         
     rsf_model = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
-    
-    ddf = pd.DataFrame({
-        'status': [False, False, True, False],
-        'duration': [5.81917808219178, 2.85753424657534, 0.306849315068493, 5.18630136986301],
-        'BM_BLAST': [3.0, 2.0, 15.0, 3.0],
-        'HB': [8.8, 9.8, 8.9, 7.0],
-        'PLT': [406.0, 364.0, 35.0, 708.0],
-    })
-    
-    PH_model = CoxPHFitter()
-    #PHs = regression_score(df, PH_model)
+    PH_model = CoxPHFitter(penalizer=0.0)
     
     for j in tqdm(range(n_features)):
         Xj = X[:, j : j + 1]
