@@ -88,7 +88,7 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 # %%
 
 # Compute feature importance scores
-scores = u.fit_and_score_features(X_train, y_train)
+scores, s = u.fit_and_score_features(X_df, y)
 
 # Rank features based on their importance
 vals = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index"])

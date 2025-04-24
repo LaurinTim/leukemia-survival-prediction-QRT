@@ -3,7 +3,7 @@
 import warnings
 warnings.filterwarnings("ignore")
 
-from lifelines import KaplanMeierFitter
+from lifelines import KaplanMeierFitter, CoxPHFitter
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -106,7 +106,15 @@ def status_to_StructuredArray(data):
     
     return arr
 
-def fit_and_score_features(X, y):
+def cox_score(x, y, model):
+    model.fit(x, y)
+    return model.score(x, y), concordance_index_ipcw(y, y, model.predict(x))[0]
+    
+def regression_score(df, model):    
+    model.fit(df, duration_col="duration", event_col="status")
+    return model.summary
+
+def fit_and_score_features(X_df, y):
     '''
 
     Parameters
@@ -124,16 +132,35 @@ def fit_and_score_features(X, y):
         each feature in X.
 
     '''
+    X = np.array(X_df)
     n_features = X.shape[1]
+    features = list(X_df.columns)
     scores = np.zeros((n_features, 2))
-    #m = CoxPHSurvivalAnalysis()
-    m = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
+    
+    df = X_df.copy()
+    
+    df.insert(0, "duration", list(y["time"]))
+    df.insert(0, "status", list(y["status"]))
+        
+    rsf_model = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
+    
+    ddf = pd.DataFrame({
+        'status': [False, False, True, False],
+        'duration': [5.81917808219178, 2.85753424657534, 0.306849315068493, 5.18630136986301],
+        'BM_BLAST': [3.0, 2.0, 15.0, 3.0],
+        'HB': [8.8, 9.8, 8.9, 7.0],
+        'PLT': [406.0, 364.0, 35.0, 708.0],
+    })
+    
+    PH_model = CoxPHFitter()
+    #PHs = regression_score(df, PH_model)
+    
     for j in tqdm(range(n_features)):
         Xj = X[:, j : j + 1]
-        m.fit(Xj, y)
-        scores[j,0] = m.score(Xj, y)
-        scores[j,1] = concordance_index_ipcw(y, y, m.predict(Xj))[0]
-    return scores
+        scores[j,0], scores[j,1] = cox_score(Xj, y, rsf_model)
+        PHs = regression_score(df[["duration", "status", features[j]]], PH_model)
+        
+    return scores, PHs
 
 def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_train.csv', data_file_status=data_dir+'\\target_train.csv'):
     '''
@@ -438,6 +465,10 @@ class Dataset():
         self.sparse_features_sub = sparse_features_sub[X_sum_sub < min_occurences/3]
         self.X_sub = self.X_sub.drop(columns=self.sparse_features_sub)
         self.X = self.X.drop(columns=self.sparse_features_sub)
+        
+        #remove multiindex columns from X and X_sub
+        self.X.columns = ['_'.join(col) for col in self.X.columns]
+        self.X_sub.columns = ['_'.join(col) for col in self.X_sub.columns]
         
     def __getData(self) -> None:
         '''
