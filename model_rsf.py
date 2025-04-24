@@ -64,15 +64,20 @@ status_df = d.status_df
 clinical_df = d.clinical_df
 molecular_df = d.molecular_df
 
+#get the prepared submission molecular and clical data
+clinical_df_sub, molecular_df_sub = d.submission_data_prep()
+
 # %%
 
 # Instantiate dataset class
-a = u.Dataset(status_df, clinical_df, molecular_df, min_occurences=30)
+a = u.Dataset(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=30)
 
 # Convert dataset into feature matrices
 X_df = a.X
 X = np.array(X_df)
 y = a.y
+X_sub_df = a.X_sub
+X_sub = np.array(X_sub_df)
 
 # Convert y into structured array
 y = np.array([(bool(val[0]), float(val[1])) for val in y], dtype=[('status', bool), ('time', float)])
@@ -129,9 +134,24 @@ print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
 
 # %%
 
+# Train Random Survival Forest model
+clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf.fit(X1, y)
+#threshold = 0.5
+
+# Evaluate Random Survival Forest model
+pt = clf.predict(X_val1)
+ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], pt)[0]
+indp1 = concordance_index_ipcw(y_train1, y_val1, pt)[0]
+print(f"Training C-Index and IPCW C-Index:   {clf.score(X1, y):0.4f}, {concordance_index_ipcw(y, y, clf.predict(X1))[0]:0.4f}")
+print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
+
+# %%
+
 # Prepare test submission data
-clinical_df_sub, molecular_df_sub = d.submission_data_prep()
-X_sub_df, patient_ids_sub = a.submission_data(clinical_df_sub, molecular_df_sub)
+#clinical_df_sub, molecular_df_sub = d.submission_data_prep()
+#X_sub_df, patient_ids_sub = a.submission_data(clinical_df_sub, molecular_df_sub)
+patient_ids_sub = a.patient_ids_sub
 X_sub_df1 = X_sub_df[use_cols]
 X_sub = np.array(X_sub_df1)
 
@@ -139,8 +159,8 @@ X_sub = np.array(X_sub_df1)
 
 # Generate predictions for submission
 pt_sub = clf.predict(X_sub)
-submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
-submission_df.to_csv(data_dir + "\\submission_files\\rsf0.csv", index=False)
+submission_df1 = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
+submission_df1.to_csv(data_dir + "\\submission_files\\rsf2.csv", index=False)
 
 
 

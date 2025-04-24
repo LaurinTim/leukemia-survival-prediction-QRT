@@ -381,7 +381,7 @@ class DatasetPrep():
         return clinical_df_sub, molecular_df_sub
         
 class Dataset():
-    def __init__(self, status_df, clinical_df, molecular_df, min_occurences=5):
+    def __init__(self, status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=5):
         '''
 
         Parameters
@@ -427,6 +427,17 @@ class Dataset():
         sparse_features = self.X.columns
         self.sparse_features = sparse_features[X_sum < min_occurences]
         self.X = self.X.drop(columns=self.sparse_features)
+        
+        #get the submission data and patient ids
+        self.X_sub, self.patient_ids_sub = self.submission_data(clinical_df_sub, molecular_df_sub)
+        
+        #repeat the search for the sparse features in the submission data
+        #remove any columns from both the training and submission data that occur less than min_occurences/3 times in the submission data
+        X_sum_sub = np.sum(np.array(self.X_sub).astype(bool), axis=0)
+        sparse_features_sub = self.X_sub.columns
+        self.sparse_features_sub = sparse_features_sub[X_sum_sub < min_occurences/3]
+        self.X_sub = self.X_sub.drop(columns=self.sparse_features_sub)
+        self.X = self.X.drop(columns=self.sparse_features_sub)
         
     def __getData(self) -> None:
         '''
