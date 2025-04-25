@@ -110,16 +110,54 @@ feature_order = list(vals_ord.index)
 scores = np.zeros((len(feature_order), 2))
 
 for i, curr_feature in tqdm(enumerate(feature_order), total=len(feature_order)):
-    cox = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-    cox.fit(np.array(X_df2), y)
-    pred = cox.predict(np.array(X_df2))
+    clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+    clf.fit(np.array(X_df2), y)
+    pred = clf.predict(np.array(X_df2))
     scores[i,0] = concordance_index_censored(y["status"], y["time"], pred)[0]
     scores[i,1] = concordance_index_ipcw(y, y, pred)[0]
     X_df2 = X_df2.drop(curr_feature, axis=1)
     
 # This is the performance of the model on the training set using RandomSurvivalForest and eliminating one after another the features
-# with the lowest IPCW Concorcance Index taken from vals. The Index is the feature that gets eliminated for the model on the next row.
+# with the lowest IPCW Concorcance Index taken from vals. This means that the number of features decreases by 1 each iteration. The 
+# Index is the feature that gets eliminated from the next row onwards.
 vals1 = pd.DataFrame(scores, index=feature_order, columns=["C-Index", "IPCW C-Index"]) # shape (78, 2)
+
+# %%
+
+vals_ord = vals.sort_values("IPCW C-Index", axis=0)
+feature_order = list(vals_ord.index)
+scores = np.zeros((len(feature_order), 2))
+
+for i, curr_feature in tqdm(enumerate(feature_order), total=len(feature_order)):
+    X_df2 = X_df.drop(curr_feature, axis=1)
+    clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+    clf.fit(np.array(X_df2), y)
+    pred = clf.predict(np.array(X_df2))
+    scores[i,0] = concordance_index_censored(y["status"], y["time"], pred)[0]
+    scores[i,1] = concordance_index_ipcw(y, y, pred)[0]
+    
+# This is the performance of the model on the training set using RandomSurvivalForest and eliminating features starting with the one 
+# with the lowest IPCW Concorcance Index taken from vals. So the model is always trained with 1 less feature than is in X_df. The Index 
+# is the feature that gets eliminated for the current row.
+vals2 = pd.DataFrame(scores, index=feature_order, columns=["C-Index", "IPCW C-Index"]) # shape (78, 2)
+
+# %%
+
+vals_ord = vals.sort_values("IPCW C-Index", axis=0)
+feature_order = list(vals_ord.index)
+scores = np.zeros((len(feature_order), 2))
+
+for i, curr_feature in tqdm(enumerate(feature_order), total=len(feature_order)):
+    X_df2 = X_df.copy()
+    X_df2[curr_feature] = np.random.permutation(X_df[curr_feature].values)
+    clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+    clf.fit(np.array(X_df2), y)
+    pred = clf.predict(np.array(X_df2))
+    scores[i,0] = concordance_index_censored(y["status"], y["time"], pred)[0]
+    scores[i,1] = concordance_index_ipcw(y, y, pred)[0]
+    
+# This is the performance of the model on the training set using RandomSurvivalForest and permuting the values for one feature.
+vals3 = pd.DataFrame(scores, index=feature_order, columns=["C-Index", "IPCW C-Index"]) # shape (78, 2)
 
 # %%
 
@@ -133,11 +171,13 @@ X_nf = pd.DataFrame(list([[val,bal] for val,bal in zip(X_sum, X_sum_sub)]), inde
 
 # %%
 
-
+'''
 vals.to_csv("C:\\Users\\main\\Desktop\\test files\\Features_Score.csv", index=True)
 vals1.to_csv("C:\\Users\\main\\Desktop\\test files\\model_performance_eliminating_features.csv", index=True)
+vals2.to_csv("C:\\Users\\main\\Desktop\\test files\\model_performance_eliminating_single_features.csv", index=True)
+vals3.to_csv("C:\\Users\\main\\Desktop\\test files\\model_performance_feature_permutation.csv", index=True)
 X_nf.to_csv("C:\\Users\\main\\Desktop\\test files\\non_zero_fraction.csv", index=True)
-
+'''
 
 # %%
 
@@ -151,9 +191,32 @@ print(concordance_index_ipcw(y, y, pred)[0])
 # %%
 
 # Select features based on a threshold
-threshold = 0.52
+threshold = 0.1
 threshold_p = 1e-0
 use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold and vals.loc[i].iloc[-1] <= threshold_p] # shape (32)
+
+# %%
+
+scores = np.zeros((len(use_cols), 2))
+
+for i, curr_feature in tqdm(enumerate(use_cols), total=len(use_cols)):
+    X_df2 = X_df.copy()
+    X_df2 = X_df2[use_cols]
+    X_df2[curr_feature] = np.random.permutation(X_df[curr_feature].values)
+    clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+    clf.fit(np.array(X_df2), y)
+    pred = clf.predict(np.array(X_df2))
+    scores[i,0] = concordance_index_censored(y["status"], y["time"], pred)[0]
+    scores[i,1] = concordance_index_ipcw(y, y, pred)[0]
+
+
+# This is the performance of the model on the training set using RandomSurvivalForest and permuting the values for one feature.
+vals4 = pd.DataFrame(scores, index=use_cols, columns=["C-Index", "IPCW C-Index"]) # shape (78, 2)
+
+# %%
+
+threshold = 0.83
+use_cols = [i for i in vals3.index if vals3.loc[i].iloc[1] <= threshold] # shape (32)
 
 # %%
 
@@ -173,6 +236,49 @@ preds1 = cox.predict(X_val1)
 ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], preds1)[0]
 indp1 = concordance_index_ipcw(y_train1, y_val1, preds1)[0]
 print(ind1, indp1)
+
+# %%
+
+clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf.fit(X_train1, y_train1)
+scores = np.zeros((len(use_cols), 2))
+
+pred = clf.predict(X_val1)
+ci = concordance_index_censored(y_val1["status"], y_val1["time"], pred)[0]
+cip = concordance_index_ipcw(y_train1, y_val1, pred)[0]
+
+print(f"Validation C-Index:      {ci:0.4f}")
+print(f"Validation IPCW C-Index: {cip:0.4f}")
+
+for i, curr_feature in tqdm(enumerate(use_cols), total=len(use_cols)):
+    X_valp = np.copy(X_val1)
+    X_valp[:,i] = np.random.permutation(X_val1[:,i])
+    pred = clf.predict(X_valp)
+    scores[i,0] = concordance_index_censored(y_val1["status"], y_val1["time"], pred)[0]
+    scores[i,1] = concordance_index_ipcw(y_train1, y_val1, pred)[0]
+
+
+# This is the performance of the model on the training set using RandomSurvivalForest and permuting the values for one feature.
+vals5 = pd.DataFrame(scores, index=use_cols, columns=["C-Index", "IPCW C-Index"]) # shape (78, 2)
+
+# %%
+
+clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf.fit(X_train1, y_train1)
+
+pred = clf.predict(X_val1)
+ci = concordance_index_censored(y_val1["status"], y_val1["time"], pred)[0]
+cip = concordance_index_ipcw(y_train1, y_val1, pred)[0]
+print(f"Validation C-Index:      {ci:0.4f}")
+print(f"Validation IPCW C-Index: {cip:0.4f}")
+
+XX = X_val1.copy()
+XX[:, np.argwhere(np.array(X_df1.columns=="CHR_18"))[0,0]] = np.random.permutation(XX[:, np.argwhere(np.array(X_df1.columns=="CHR_18"))[0,0]])
+pred = clf.predict(XX)
+ci = concordance_index_censored(y_val1["status"], y_val1["time"], pred)[0]
+cip = concordance_index_ipcw(y_train1, y_val1, pred)[0]
+print(f"Validation C-Index:      {ci:0.4f}")
+print(f"Validation IPCW C-Index: {cip:0.4f}")
 
 # %%
 
