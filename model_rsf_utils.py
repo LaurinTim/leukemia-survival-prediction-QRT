@@ -165,8 +165,8 @@ def fit_and_score_features(X_df, y):
     df.insert(0, "duration", list(y["time"]))
     df.insert(0, "status", list(y["status"]))
         
-    #rsf_model = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
-    rsf_model = RandomSurvivalForest()
+    rsf_model = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
+    #rsf_model = RandomSurvivalForest()
     PH_model = CoxPHFitter(penalizer=0.0)
     skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
     lasso_model = CoxnetSurvivalAnalysis()
@@ -614,9 +614,9 @@ class Dataset():
             #number of mutations
             molecular_item[0] = len(curr_molecular)
             #average length of the mutations
-            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            #molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
             #median length of the mutations with length greater than 0
-            molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
+            #molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
             #if only mutations of length 0 are present set molecular_item[2] to 0
             if str(molecular_item[2]) == "nan":
                 molecular_item[2] = 0
@@ -627,8 +627,20 @@ class Dataset():
             #get the number of mutations from a substitution, deletion and insertion
             molecular_ref = curr_molecular[:,3]
             molecular_alt = curr_molecular[:,4]
-            molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
-            molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
+            
+            molecular_mutation_type = np.zeros(3)
+            molecular_lengths = []
+            for i in range(len(molecular_ref)):
+                temp_molecular_mutation_type, temp_mut_len = self.classify_mutation_test(molecular_ref[i], molecular_alt[i])
+                molecular_mutation_type += temp_molecular_mutation_type
+                molecular_lengths.append(temp_mut_len)
+                
+            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
+            
+            #molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
+            #molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
+            molecular_item[4:7] = molecular_mutation_type
             
             #vaf and depth of the mutations
             molecular_vaf = curr_molecular[:,8]
@@ -686,25 +698,70 @@ class Dataset():
         """
         
         res = np.zeros(3)
+        mut_len = 0
         
         if str(ref)=="nan" or str(alt)=="nan":
             return res
         
         if len(ref) == len(alt):
             # Substitution
-            res[0] = 1
             if ref=="-":
                 res[2] = 1
-            if alt=="-":
+                mut_len = 1
+            elif alt=="-":
                 res[1] = 1
+                mut_len = 1
+            else:
+                res[0] = 1
+                mut_len = len(ref)
         elif len(ref) > len(alt):
             # Deletion: nucleotides removed
             res[1] = 1
+            mut_len = len(ref)
         else:
             # Insertion: extra nucleotides added
             res[2] = 1
+            mut_len = len(alt)
         
         return res
+    
+    def classify_mutation_test(self, ref, alt):
+        """
+        Classify a mutation based on the REF and ALT values.
+        
+        Returns:
+            mutation_type (str): One of 'substitution', 'deletion', or 'insertion'
+            mutation_descriptor (str): A string describing the mutation (e.g., "A>G", "del_16", "ins_3")
+            length_change (int): The difference in length (0 for substitutions)
+        """
+        
+        res = np.zeros(3)
+        mut_len = 0
+        
+        if str(ref)=="nan" or str(alt)=="nan":
+            return res, mut_len
+        
+        if len(ref) == len(alt):
+            # Substitution
+            if ref=="-":
+                res[2] = 1
+                mut_len = 1
+            elif alt=="-":
+                res[1] = 1
+                mut_len = 1
+            else:
+                res[0] = 1
+                mut_len = len(ref)
+        elif len(ref) > len(alt):
+            # Deletion: nucleotides removed
+            res[1] = 1
+            mut_len = len(ref)
+        else:
+            # Insertion: extra nucleotides added
+            res[2] = 1
+            mut_len = len(alt)
+        
+        return res, mut_len
     
     def submission_data(self, clinical_df_sub, molecular_df_sub):
         '''
@@ -786,21 +843,34 @@ class Dataset():
         else:
             molecular_item = np.zeros((len(curr_molecular), len(curr_molecular[0])+1))
             molecular_item[:,1] = curr_molecular[:,2]-curr_molecular[:,1]
-            molecular_lengths = molecular_item[:,1]
+            #molecular_lengths = molecular_item[:,1]
             molecular_item[:,11:] = curr_molecular[:,10:]
             molecular_item = np.sum(molecular_item, axis=0)
             
             molecular_item[0] = len(curr_molecular)
             molecular_item[3] = np.sum(curr_molecular[:,7])
-            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
-            molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
+            #molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            #molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
+            
             if str(molecular_item[2]) == "nan":
                 molecular_item[2] = 0
             
             molecular_ref = curr_molecular[:,3]
             molecular_alt = curr_molecular[:,4]
-            molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
-            molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
+            
+            molecular_mutation_type = np.zeros(3)
+            molecular_lengths = []
+            for i in range(len(molecular_ref)):
+                temp_molecular_mutation_type, temp_mut_len = self.classify_mutation_test(molecular_ref[i], molecular_alt[i])
+                molecular_mutation_type += temp_molecular_mutation_type
+                molecular_lengths.append(temp_mut_len)
+                
+            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
+                
+            #molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
+            #molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
+            molecular_item[4:7] = molecular_mutation_type
             
             molecular_vaf = curr_molecular[:,8]
             molecular_depth = curr_molecular[:,9]
