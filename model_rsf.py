@@ -49,9 +49,9 @@ u.set_random_seed(random_seed)
 # %%
 
 # Load datasets
-status_df_original = pd.read_csv(status_file)
-clinical_df_original = pd.read_csv(clinical_file)
-molecular_df_original = pd.read_csv(molecular_file)
+status_df_original = pd.read_csv(status_file) # shape (3323, 3)
+clinical_df_original = pd.read_csv(clinical_file) # shape (3323, 9)
+molecular_df_original = pd.read_csv(molecular_file) # shape (10935, 11)
 
 # Map effects of mutations to survival data
 effects_map = u.effect_to_survival_map()
@@ -60,12 +60,12 @@ effects_map = u.effect_to_survival_map()
 d = u.DatasetPrep(status_df_original, clinical_df_original, molecular_df_original, ["CHR", "GENE"], effects_map)
 
 # Extract processed datasets
-status_df = d.status_df
-clinical_df = d.clinical_df
-molecular_df = d.molecular_df
+status_df = d.status_df # shape (3173, 9)
+clinical_df = d.clinical_df # shape (3173, 9)
+molecular_df = d.molecular_df # shape (10545, 154)
 
 #get the prepared submission molecular and clical data
-clinical_df_sub, molecular_df_sub = d.submission_data_prep()
+clinical_df_sub, molecular_df_sub = d.submission_data_prep() # shapes (1193, 9) for clinical_df_sub, (3089, 154) for molecular_df_sub
 
 # %%
 
@@ -73,10 +73,10 @@ clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 a = u.Dataset(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=30)
 
 # Convert dataset into feature matrices
-X_df = a.X
+X_df = a.X # shape (3173, 78)
 X = np.array(X_df)
-y = a.y
-X_sub_df = a.X_sub
+y = a.y # shape (3173, 2)
+X_sub_df = a.X_sub # shape (1193, 78)
 X_sub = np.array(X_sub_df)
 
 # Convert y into structured array
@@ -87,12 +87,20 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
+idsub = a.patient_ids_sub
+
+# %%
+
 # Compute feature importance scores
 scores = u.fit_and_score_features(X_df, y)
 
 # Rank features based on their importance
+# The first two rows are the Concordance Index and IPCW Concordance Index obtained by training a model with RandomSurvivalForest and only using the
+# feature in the index, the next two are the same but lifelines.CoxPHFitter is used for the model. Similarly, for the 5th and 6th column 
+# sksurv.linear_model.CoxPHSurvivalAnalysis is used and for the 7th and 8th column sksurv.linear_model.CoxnetSurvivalAnalysis is used. In the 9th 
+# column is the p score obtained from the summary of the lifelines.CoxPHFitter method.
 vals = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
-                                                         "Lasso C-Index", "Lasso IPCW C-Index", "p score"])
+                                                         "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
 
 # %%
 
@@ -101,16 +109,35 @@ vals_ord = vals.sort_values("IPCW C-Index", axis=0)
 feature_order = list(vals_ord.index)
 scores = np.zeros((len(feature_order), 2))
 
-cox = RandomSurvivalForest()
-
 for i, curr_feature in tqdm(enumerate(feature_order), total=len(feature_order)):
+    cox = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
     cox.fit(np.array(X_df2), y)
     pred = cox.predict(np.array(X_df2))
     scores[i,0] = concordance_index_censored(y["status"], y["time"], pred)[0]
     scores[i,1] = concordance_index_ipcw(y, y, pred)[0]
     X_df2 = X_df2.drop(curr_feature, axis=1)
     
-vals1 = pd.DataFrame(scores, index=feature_order, columns=["C-Index", "IPCW C-Index"])
+# This is the performance of the model on the training set using RandomSurvivalForest and eliminating one after another the features
+# with the lowest IPCW Concorcance Index taken from vals. The Index is the feature that gets eliminated for the model on the next row.
+vals1 = pd.DataFrame(scores, index=feature_order, columns=["C-Index", "IPCW C-Index"]) # shape (78, 2)
+
+# %%
+
+X_sum = np.sum(np.array(X_df).astype(bool), axis=0) / len(X_df)
+X_sum_sub = np.sum(np.array(X_sub_df).astype(bool), axis=0) / len(X_sub_df)
+
+# This is a dataframe containing the fraction of each feature in the train and test data that are not 0 (so we can see how often a 
+# feature is present). The index indicates the feature and in the first column are the values for the training data, in the second for 
+# the test data.
+X_nf = pd.DataFrame(list([[val,bal] for val,bal in zip(X_sum, X_sum_sub)]), index=list(X_df.columns), columns=["train data", "test data"]) # shape (78, 2)
+
+# %%
+
+
+vals.to_csv("C:\\Users\\main\\Desktop\\test files\\Features_Score.csv", index=True)
+vals1.to_csv("C:\\Users\\main\\Desktop\\test files\\model_performance_eliminating_features.csv", index=True)
+X_nf.to_csv("C:\\Users\\main\\Desktop\\test files\\non_zero_fraction.csv", index=True)
+
 
 # %%
 
@@ -125,12 +152,13 @@ print(concordance_index_ipcw(y, y, pred)[0])
 
 # Select features based on a threshold
 threshold = 0.52
-use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold]
+threshold_p = 1e-0
+use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold and vals.loc[i].iloc[-1] <= threshold_p] # shape (32)
 
 # %%
 
 # Prepare dataset with selected features
-X_df1 = X_df[use_cols]
+X_df1 = X_df[use_cols] # shape (3173, len(use_cols))
 X1 = np.array(X_df1)
 
 # Train-test split with selected features
@@ -150,6 +178,7 @@ print(ind1, indp1)
 
 # Train Random Survival Forest model
 clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+#clf = RandomSurvivalForest()
 clf.fit(X_train1, y_train1)
 #threshold = 0.5
 
@@ -162,8 +191,9 @@ print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
 
 # %%
 
-# Train Random Survival Forest model
+# Train Random Survival Forest model, this is the actual model used for the test set
 clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+#clf = RandomSurvivalForest()
 clf.fit(X1, y)
 #threshold = 0.5
 
@@ -177,18 +207,16 @@ print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
 # %%
 
 # Prepare test submission data
-#clinical_df_sub, molecular_df_sub = d.submission_data_prep()
-#X_sub_df, patient_ids_sub = a.submission_data(clinical_df_sub, molecular_df_sub)
 patient_ids_sub = a.patient_ids_sub
 X_sub_df1 = X_sub_df[use_cols]
 X_sub = np.array(X_sub_df1)
 
 # %%
 
-# Generate predictions for submission
+# Generate predictions for the test set
 pt_sub = clf.predict(X_sub)
 submission_df1 = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
-submission_df1.to_csv(data_dir + "\\submission_files\\rsf2.csv", index=False)
+submission_df1.to_csv(data_dir + "\\submission_files\\rsf3.csv", index=False)
 
 
 
