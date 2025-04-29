@@ -263,24 +263,20 @@ vals5 = pd.DataFrame(scores, index=use_cols, columns=["C-Index", "IPCW C-Index"]
 
 # %%
 
-clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-clf.fit(X_train1, y_train1)
-
-pred = clf.predict(X_val1)
-ci = concordance_index_censored(y_val1["status"], y_val1["time"], pred)[0]
-cip = concordance_index_ipcw(y_train1, y_val1, pred)[0]
-print(f"Validation C-Index:      {ci:0.4f}")
-print(f"Validation IPCW C-Index: {cip:0.4f}")
-
-XX = X_val1.copy()
-XX[:, np.argwhere(np.array(X_df1.columns=="CHR_18"))[0,0]] = np.random.permutation(XX[:, np.argwhere(np.array(X_df1.columns=="CHR_18"))[0,0]])
-pred = clf.predict(XX)
-ci = concordance_index_censored(y_val1["status"], y_val1["time"], pred)[0]
-cip = concordance_index_ipcw(y_train1, y_val1, pred)[0]
-print(f"Validation C-Index:      {ci:0.4f}")
-print(f"Validation IPCW C-Index: {cip:0.4f}")
+threshold = 0.7075
+use_cols = [i for i in vals5.index if vals5.loc[i].iloc[1] <= threshold] # shape (32)
+threshold = 0.7076
+use_cols1 = [i for i in vals5.index if vals5.loc[i].iloc[1] <= threshold] # shape (32)
+print([val for val in use_cols1 if not val in use_cols])
 
 # %%
+
+# Prepare dataset with selected features
+X_df1 = X_df[use_cols] # shape (3173, len(use_cols))
+X1 = np.array(X_df1)
+
+# Train-test split with selected features
+X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
 
 # Train Random Survival Forest model
 clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)

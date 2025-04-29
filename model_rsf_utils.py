@@ -165,8 +165,8 @@ def fit_and_score_features(X_df, y):
     df.insert(0, "duration", list(y["time"]))
     df.insert(0, "status", list(y["status"]))
         
-    #rsf_model = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
-    rsf_model = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+    rsf_model = RandomSurvivalForest(n_estimators=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
+    #rsf_model = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
     #rsf_model = RandomSurvivalForest()
     PH_model = CoxPHFitter(penalizer=0.0)
     skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
@@ -469,6 +469,8 @@ class Dataset():
         self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
                                                                                   ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
         
+        self.X.loc[:, "HB"] = np.log(self.X["HB"]+1e-9)
+        
         #remove columns corresponding to features from self.X which are present in less than min_occurences patients
         sparse_features = self.X.columns
         self.sparse_features = sparse_features[X_sum < min_occurences]
@@ -495,12 +497,18 @@ class Dataset():
         Fill self.X and self.y with the transformed data.
 
         '''
+        self.pos=0
+        
         for idx in range(self.patient_num):
             curr_X_item, curr_y_item = self.__getItem(idx)
             self.X[idx] = curr_X_item
             self.y[idx] = curr_y_item
             
+            self.pos+=1
+            
         self.X = np.nan_to_num(self.X, nan=0)
+        
+        #self.X[:,len(clinical_features) + 2 + len(cyto_markers) + 3][self.X[:,len(clinical_features) + 2 + len(cyto_markers) + 3] == 0] = np.median(self.y[:,1][[True if val == 0 and bal == 1 else False for val,bal in zip(self.X[:,len(clinical_features) + 2 + len(cyto_markers) + 3], self.y[:,0])]])
         
     def __getItem(self, idx):
         '''
@@ -601,6 +609,9 @@ class Dataset():
         #if the current patient has no recorded somatic mutations, the molecular item is set to an array containing only zeros
         if len(curr_molecular)==0:
             molecular_item = np.zeros(self.molecular_df.shape[1]+1)
+            
+            #set MEDIAN_EFFECT_SURVIVAL to 2.8
+            #molecular_item[3] = np.median(np.array(self.status_df)[:,1][np.array(self.status_df)[:,2]==1])
         
         else:
             molecular_item = np.zeros((len(curr_molecular), len(curr_molecular[0])+1))
@@ -622,8 +633,8 @@ class Dataset():
             if str(molecular_item[2]) == "nan":
                 molecular_item[2] = 0
                 
-            #sum over the expected median survival time of the different effects of the mutations
-            molecular_item[3] = np.sum(curr_molecular[:,7])
+            #take the mean over the expected median survival time of the different effects of the mutations
+            molecular_item[3] = np.mean(curr_molecular[:,7])#/len([val for val in curr_molecular[:,7] if val>0])
             
             #get the number of mutations from a substitution, deletion and insertion
             molecular_ref = curr_molecular[:,3]
@@ -821,7 +832,7 @@ class Dataset():
             molecular_item = np.sum(molecular_item, axis=0)
             
             molecular_item[0] = len(curr_molecular)
-            molecular_item[3] = np.sum(curr_molecular[:,7])
+            molecular_item[3] = np.mean(curr_molecular[:,7])
             #molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
             #molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
             
