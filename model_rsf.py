@@ -113,6 +113,18 @@ vals2 = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Ind
 
 # %%
 
+scores = u.fit_and_score_features(X_df, y)
+vals3 = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
+                                                         "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
+
+# %%
+
+scores = u.fit_and_score_features(X_df, y)
+vals4 = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
+                                                         "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
+
+# %%
+
 X_df2 = X_df.copy()
 vals_ord = vals.sort_values("IPCW C-Index", axis=0)
 feature_order = list(vals_ord.index)

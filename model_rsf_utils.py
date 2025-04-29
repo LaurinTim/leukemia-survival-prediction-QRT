@@ -165,18 +165,18 @@ def fit_and_score_features(X_df, y):
     df.insert(0, "duration", list(y["time"]))
     df.insert(0, "status", list(y["status"]))
         
-    rsf_model = RandomSurvivalForest(n_estimators=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
+    #rsf_model = RandomSurvivalForest(n_estimators=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
     #rsf_model = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
     #rsf_model = RandomSurvivalForest()
-    PH_model = CoxPHFitter(penalizer=0.0)
-    skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
+    #PH_model = CoxPHFitter(penalizer=0.5)
+    #skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
     lasso_model = CoxnetSurvivalAnalysis()
     
     for j in tqdm(range(n_features)):
         Xj = X[:, j : j + 1]
-        scores[j,0], scores[j,1] = cox_score(Xj, y, rsf_model)
-        scores[j,2], scores[j,3], scores[j,-1] = regression_score(df[["duration", "status", features[j]]], y, PH_model)
-        scores[j,4], scores[j,5] = skl_score(Xj, y, skl_model)
+        #scores[j,0], scores[j,1] = cox_score(Xj, y, rsf_model)
+        #scores[j,2], scores[j,3], scores[j,-1] = regression_score(df[["duration", "status", features[j]]], y, PH_model)
+        #scores[j,4], scores[j,5] = skl_score(Xj, y, skl_model)
         scores[j,6], scores[j,7] = skl_score(Xj, y, lasso_model)
         
     return scores
