@@ -88,13 +88,18 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
+column = "DEPTH_SUM"
+
 fig, ax = plt.subplots(figsize=(10,5))
 
 xx = y["time"][y["status"]==True]
-yy = X_df["WBC"][y["status"]==True]
+yy = X_df[column][y["status"]==True]
 
-ax.scatter(xx, yy)
-ax.set_title("WBC/time scatter plot")
+ax.scatter(xx, yy, s=5)
+#ax.set_yscale("log")
+ax.set_xlabel(xlabel="Survival time")
+ax.set_ylabel(ylabel=column)
+ax.set_title(column + "/time scatter plot")
 
 plt.show()
 
@@ -108,9 +113,9 @@ xh = np.array(X_df[column][y["status"]==True])
 xha = np.array(X_df[column])
 
 #xh[xh == 0] = sorted(set(xh))[1]
-xh = xh[xh!=0]
+#xh = xh[xh!=0]
 
-ax.hist(np.log(xh+1e-9), bins=20)
+ax.hist(np.log(xh+1e-9), bins=100)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -126,7 +131,8 @@ xha = np.array(X_df[column])
 
 #xh = xh[xh!=0]
 
-ax.hist(np.log(xh+1e-9), bins=50)
+#ax.hist(np.log(xh+1e-9), bins=50)
+ax.hist(xh, bins=50)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -153,12 +159,13 @@ column = "WBC"
 
 fig, ax = plt.subplots(figsize=(10,5))
 
-xh = np.array(X_df[column][y["status"]==True])
-xha = np.array(X_df[column])
+xha = np.array(X_df[column][y["status"]==True])
+xh = np.array(X_df[column])
 
 #xh = xh[xh!=0]
 
-ax.hist(np.log(xh+1e-9), bins=50)
+#ax.hist(np.log((xh-0.15)+1e-9), bins=60)
+ax.hist(xh, bins=200)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -169,12 +176,13 @@ column = "ANC"
 
 fig, ax = plt.subplots(figsize=(10,5))
 
-xh = np.array(X_df[column][y["status"]==True])
-xha = np.array(X_df[column])
+xha = np.array(X_df[column][y["status"]==True])
+xh = np.array(X_df[column])
 
-xh = xh[xh!=0]
+#xh = xh[xh!=0]
 
-ax.hist(np.log(xh+1e-9), bins=50)
+#ax.hist(np.log((xh+1)*1e-9), bins=200)
+ax.hist(xh, bins=200)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -238,7 +246,8 @@ xha = np.array(X_df[column])
 
 xh = xh[xh!=0]
 
-ax.hist(xh**0.2, bins=50)
+#ax.hist(xh**0.2, bins=50)
+ax.hist(xh, bins=100)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -271,6 +280,38 @@ xha = np.array(X_df[column])
 xh = xh[xh!=0]
 
 ax.hist(xh**0.2, bins=50)
+ax.set_title(column + " hist")
+
+plt.show()
+
+# %%
+
+column = "EFFECT_MEDIAN_SURVIVAL"
+
+fig, ax = plt.subplots(figsize=(10,5))
+
+xh = np.array(X_df[column][y["status"]==True])
+xha = np.array(X_df[column])
+
+#xh = xh[xh!=0]
+
+ax.hist(xh, bins=200)
+ax.set_title(column + " hist")
+
+plt.show()
+
+# %%
+
+column = "MUTATIONS_NUMBER"
+
+fig, ax = plt.subplots(figsize=(10,5))
+
+xh = np.array(X_df[column][y["status"]==True])
+xha = np.array(X_df[column])
+
+#xh = xh[xh!=0]
+
+ax.hist(xh, bins=18)
 ax.set_title(column + " hist")
 
 plt.show()

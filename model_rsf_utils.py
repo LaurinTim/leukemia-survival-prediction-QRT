@@ -469,7 +469,8 @@ class Dataset():
         self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
                                                                                   ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
         
-        self.X.loc[:, "HB"] = np.log(self.X["HB"]+1e-9)
+        #self.X.loc[:, "WBC"] = np.log((self.X["WBC"]-0.15)+1e-9)
+        #self.X.loc[:, "ANC"] = np.log((self.X["ANC"]+1)*1e-9)
         
         #remove columns corresponding to features from self.X which are present in less than min_occurences patients
         sparse_features = self.X.columns
