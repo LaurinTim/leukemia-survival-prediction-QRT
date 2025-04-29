@@ -98,29 +98,24 @@ scores = u.fit_and_score_features(X_df, y)
 # column is the p score obtained from the summary of the lifelines.CoxPHFitter method.
 vals = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
                                                          "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
-
 # %%
 
-scores = u.fit_and_score_features(X_df, y)
+scores = u.fit_and_score_features2(X_df, y)
 vals1 = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
                                                          "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
 
 # %%
 
-scores = u.fit_and_score_features(X_df, y)
-vals2 = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
-                                                         "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
+
+# Select features based on a threshold
+threshold = 0.57
+threshold_p = 1e-0
+use_cols = [i for i in vals.index if vals1.loc[i].iloc[1] >= threshold and vals1.loc[i].iloc[-1] <= threshold_p] # shape (32)
 
 # %%
 
-scores = u.fit_and_score_features(X_df, y)
-vals3 = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
-                                                         "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
-
-# %%
-
-scores = u.fit_and_score_features(X_df, y)
-vals4 = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
+scores = u.fit_and_score_features2(X_df[use_cols], y)
+vals2 = pd.DataFrame(scores[0:1], index=["use_cols features"], columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
                                                          "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
 
 # %%

@@ -108,33 +108,60 @@ def status_to_StructuredArray(data):
     
     return arr
 
-def cox_score(x, y, model):
-    model.fit(x, y)
-    return model.score(x, y), concordance_index_ipcw(y, y, model.predict(x))[0]
+def cox_score(X, y, model, x_val=None, y_val=None):
+    model.fit(X, y)
     
-def regression_score(df, y, model):    
+    if not x_val is None:
+        pred = model.predict(x_val)
+        ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
+        ci_ipcw = concordance_index_ipcw(y, y_val, pred)[0]
+        return ci, ci_ipcw
+    
+    pred = model.predict(X)
+    ci = concordance_index_censored(y["status"], y["time"], pred)[0]
+    ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
+    return ci, ci_ipcw
+    
+def regression_score(df, y, model, df_val=None, y_val=None):    
     model.fit(df, duration_col="duration", event_col="status")
+    
+    if not df_val is None:
+        pred = model.predict_partial_hazard(df_val)
+        ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
+        ci_ipcw = concordance_index_ipcw(y, y_val, pred)[0]
+        return ci, ci_ipcw, model.summary.loc[list(df.columns)[2], "p"]
+    
     pred = model.predict_partial_hazard(df)
     ci = concordance_index_censored(y["status"], y["time"], pred)[0]
     ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
-    
     return ci, ci_ipcw, model.summary.loc[list(df.columns)[2], "p"]
-    #return model.summary.loc[list(df.columns)[2], "p"]
     
-def skl_score(X, y, model):
+def skl_score(X, y, model, x_val=None, y_val=None):
     model.fit(X, y)
+    
+    if not x_val is None:
+        pred = model.predict(x_val)
+        ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
+        ci_ipcw = concordance_index_ipcw(y, y_val, pred)[0]
+        return ci, ci_ipcw
+    
     pred = model.predict(X)
     ci = concordance_index_censored(y["status"], y["time"], pred)[0]
     ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
-    
     return ci, ci_ipcw
 
-def lasso_score(X, y, model):
+def lasso_score(X, y, model, x_val=None, y_val=None):
     model.fit(X, y)
+    
+    if not x_val is None:
+        pred = model.predict(x_val)
+        ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
+        ci_ipcw = concordance_index_ipcw(y, y_val, pred)[0]
+        return ci, ci_ipcw
+    
     pred = model.predict(X)
     ci = concordance_index_censored(y["status"], y["time"], pred)[0]
     ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
-    
     return ci, ci_ipcw
 
 def fit_and_score_features(X_df, y):
@@ -165,20 +192,88 @@ def fit_and_score_features(X_df, y):
     df.insert(0, "duration", list(y["time"]))
     df.insert(0, "status", list(y["status"]))
         
-    #rsf_model = RandomSurvivalForest(n_estimators=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
+    rsf_model = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
     #rsf_model = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
     #rsf_model = RandomSurvivalForest()
-    #PH_model = CoxPHFitter(penalizer=0.5)
-    #skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
+    PH_model = CoxPHFitter(penalizer=0.5)
+    skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
     lasso_model = CoxnetSurvivalAnalysis()
+    
+    #n_features=1
     
     for j in tqdm(range(n_features)):
         Xj = X[:, j : j + 1]
-        #scores[j,0], scores[j,1] = cox_score(Xj, y, rsf_model)
-        #scores[j,2], scores[j,3], scores[j,-1] = regression_score(df[["duration", "status", features[j]]], y, PH_model)
-        #scores[j,4], scores[j,5] = skl_score(Xj, y, skl_model)
+        #Xj = np.concatenate((Xj, X[:, 0:1]), axis=1)
+        #Xj = X
+        cdf = df[["duration", "status", features[j]]]
+        #cdf = df
+        scores[j,0], scores[j,1] = cox_score(Xj, y, rsf_model)
+        scores[j,2], scores[j,3], scores[j,-1] = regression_score(cdf, y, PH_model)
+        scores[j,4], scores[j,5] = skl_score(Xj, y, skl_model)
         scores[j,6], scores[j,7] = skl_score(Xj, y, lasso_model)
+                
+    return scores
+
+def fit_and_score_features2(X_df, y, random_state=1):
+    '''
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        Array containing the data used to train the model.
+    y : numpy.ndarray
+        Structured array where each element is a tuple of length 2 and type 
+        [(bool), (float)] containing the target for the training.
+
+    Returns
+    -------
+    scores : numpy.ndarray
+        Array (length=X.shape[1]) containing the concordance indices for 
+        each feature in X.
+
+    '''
+    X = np.array(X_df)
+    n_features = X.shape[1]
+    features = list(X_df.columns)
+    scores = np.zeros((n_features, 9))
+    
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=random_state)
+    
+    df_train = pd.DataFrame(X_train, columns=features)
+    df_val = pd.DataFrame(X_val, columns=features)
+    
+    df_train.insert(0, "duration", list(y_train["time"]))
+    df_train.insert(0, "status", list(y_train["status"]))
+    
+    df_val.insert(0, "duration", list(y_val["time"]))
+    df_val.insert(0, "status", list(y_val["status"]))
         
+    rsf_model = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+    #rsf_model = RandomSurvivalForest(n_estimators=1000, max_depth=50, min_samples_split=3, min_samples_leaf=1, n_jobs=-1, random_state=0)
+    #rsf_model = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+    #rsf_model = RandomSurvivalForest()
+    PH_model = CoxPHFitter(penalizer=0.01)
+    skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
+    lasso_model = CoxnetSurvivalAnalysis()
+    
+    n_features=1
+    
+    for j in tqdm(range(n_features)):
+        Xj_train = X_train[:, j : j + 1]
+        Xj_val = X_val[:, j : j + 1]
+        Xj_train = X_train
+        Xj_val = X_val
+        
+        cdf_train = df_train[["duration", "status", features[j]]]
+        cdf_train = df_train
+        cdf_val = df_val[["duration", "status", features[j]]]
+        cdf_val = df_val
+        
+        scores[j,0], scores[j,1] = cox_score(Xj_train, y_train, rsf_model, x_val = Xj_val, y_val = y_val)
+        scores[j,2], scores[j,3], scores[j,-1] = regression_score(cdf_train, y_train, PH_model, df_val = cdf_val, y_val = y_val)
+        scores[j,4], scores[j,5] = skl_score(Xj_train, y_train, skl_model, x_val = Xj_val, y_val = y_val)
+        scores[j,6], scores[j,7] = skl_score(Xj_train, y_train, lasso_model, x_val = Xj_val, y_val = y_val)
+                
     return scores
 
 def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_train.csv', data_file_status=data_dir+'\\target_train.csv'):
