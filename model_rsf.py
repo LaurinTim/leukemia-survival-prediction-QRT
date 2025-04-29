@@ -18,6 +18,7 @@ from sklearn.preprocessing import OrdinalEncoder
 from tqdm import tqdm
 from operator import itemgetter
 from sksurv.ensemble import RandomSurvivalForest
+import matplotlib.pyplot as plt
 
 # Path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -87,10 +88,6 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
-idsub = a.patient_ids_sub
-
-# %%
-
 # Compute feature importance scores
 scores = u.fit_and_score_features(X_df, y)
 
@@ -100,6 +97,18 @@ scores = u.fit_and_score_features(X_df, y)
 # sksurv.linear_model.CoxPHSurvivalAnalysis is used and for the 7th and 8th column sksurv.linear_model.CoxnetSurvivalAnalysis is used. In the 9th 
 # column is the p score obtained from the summary of the lifelines.CoxPHFitter method.
 vals = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
+                                                         "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
+
+# %%
+
+scores = u.fit_and_score_features(X_df, y)
+vals1 = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
+                                                         "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
+
+# %%
+
+scores = u.fit_and_score_features(X_df, y)
+vals2 = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index", "Cox Reg C-Index", "Cox Reg IPCW C-Index", "Skl C-Index", "Skl IPCW C-Index", 
                                                          "Lasso C-Index", "Lasso IPCW C-Index", "p score"]) # shape (78, 9)
 
 # %%
@@ -191,7 +200,7 @@ print(concordance_index_ipcw(y, y, pred)[0])
 # %%
 
 # Select features based on a threshold
-threshold = 0.1
+threshold = 0.62
 threshold_p = 1e-0
 use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold and vals.loc[i].iloc[-1] <= threshold_p] # shape (32)
 
