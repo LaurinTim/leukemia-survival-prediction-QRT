@@ -88,6 +88,72 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
+rsf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+#rsf = RandomSurvivalForest(random_state=random_state)
+#rsf = RandomSurvivalForest(n_estimators=2, max_depth=5, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+#vals, fe = u.test_features(X_df, y, rsf)
+
+# %%
+
+rsf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+#rsf = RandomSurvivalForest(random_state=random_state)
+#rsf = RandomSurvivalForest(n_estimators=2, max_depth=5, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+vals2, fe2, best_score2, best_cols2 = u.test_features2(X_df[["HB", "PLT", "WBC", "ANC"]], y, rsf)
+
+# %%
+
+use_cols = [val for val in X_df.columns if val in fe[30:]]
+
+# %%
+
+# Train-test split with selected features
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
+
+X_train = pd.DataFrame(X_train, columns=X_df.columns)
+X_val = pd.DataFrame(X_val, columns=X_df.columns)
+
+X_train = np.array(X_train[use_cols])
+X_val = np.array(X_val[use_cols])
+
+# Train Random Survival Forest model
+#clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+#clf = RandomSurvivalForest()
+clf.fit(X_train, y_train)
+#threshold = 0.5
+
+# Evaluate Random Survival Forest model
+pt = clf.predict(X_val)
+ind = concordance_index_censored(y_val['status'], y_val['time'], pt)[0]
+indp = concordance_index_ipcw(y_train, y_val, pt)[0]
+print(f"Training C-Index and IPCW C-Index:   {clf.score(X_train, y_train):0.4f}, {concordance_index_ipcw(y_train, y_train, clf.predict(X_train))[0]:0.4f}")
+print(f"Validation C-Index and IPCW C-Index: {ind:0.4f}, {indp:0.4f}")
+
+# %%
+
+# Prepare dataset with selected features
+X_df1 = X_df[use_cols] # shape (3173, len(use_cols))
+X1 = np.array(X_df1)
+
+# Train-test split with selected features
+X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
+
+# Train Random Survival Forest model
+#clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+#clf = RandomSurvivalForest()
+clf.fit(X_train1, y_train1)
+#threshold = 0.5
+
+# Evaluate Random Survival Forest model
+pt = clf.predict(X_val1)
+ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], pt)[0]
+indp1 = concordance_index_ipcw(y_train1, y_val1, pt)[0]
+print(f"Training C-Index and IPCW C-Index:   {clf.score(X_train1, y_train1):0.4f}, {concordance_index_ipcw(y_train1, y_train1, clf.predict(X_train1))[0]:0.4f}")
+print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
+
+# %%
+
 # Compute feature importance scores
 scores = u.fit_and_score_features(X_df, y)
 

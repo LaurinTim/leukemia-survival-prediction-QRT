@@ -20,6 +20,8 @@ from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
 
 from scipy.stats import logrank
 
+from time import time
+
 #path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
 #paths to files used for the training
@@ -275,6 +277,167 @@ def fit_and_score_features2(X_df, y, random_state=1):
         scores[j,6], scores[j,7] = skl_score(Xj_train, y_train, lasso_model, x_val = Xj_val, y_val = y_val)
                 
     return scores
+
+def test_features(X_df, y, model, random_state=1):
+    '''
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        Array containing the data used to train the model.
+    y : numpy.ndarray
+        Structured array where each element is a tuple of length 2 and type 
+        [(bool), (float)] containing the target for the training.
+
+    Returns
+    -------
+    scores : numpy.ndarray
+        Array (length=X.shape[1]) containing the concordance indices for 
+        each feature in X.
+
+    '''
+    X = np.array(X_df)
+    n_features = X.shape[1]
+    features = np.array(X_df.columns)
+    features_pop = list(X_df.columns)
+    scores = np.zeros((n_features, n_features))
+    feature_elim = []
+    
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=random_state)
+    
+    for i in tqdm(range(n_features)):
+        curr_scores = np.zeros(n_features)
+        curr_max_feature = None
+        curr_max_score = 0
+        curr_max_pos = -1
+        
+        for j in range(len(features_pop)):
+            if i==2: st=time()
+            curr_feature = features_pop[j]
+            curr_X_train = np.copy(X_train)
+            curr_X_val = np.copy(X_val)
+            
+            if i < n_features-1:
+                curr_X_train = np.delete(curr_X_train, j, 1)
+                curr_X_val = np.delete(curr_X_val, j, 1)
+            
+            if i==2: stt=time()
+            model.fit(curr_X_train, y_train)
+            if i==2: print(time()-stt, curr_X_train.shape)
+            
+            if i==2: sttt=time()
+            pred = model.predict(curr_X_val)
+            if i==2: print(time()-sttt)
+            
+            if i==2: stttt=time()
+            #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
+            curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
+            curr_scores[np.argwhere(features==curr_feature)] = curr_score
+            if i==2: print(time()-stttt)
+            
+            if curr_score > curr_max_score:
+                curr_max_score = curr_score
+                curr_max_feature = curr_feature
+                curr_max_pos = j
+            
+            if i==2: print(time()-st)
+            if i==2: print()
+                
+        if curr_max_pos == -1:
+            print(f"curr_min_pos is {curr_max_pos}")
+               
+        features_pop.pop(curr_max_pos)
+        X_train = np.delete(X_train, curr_max_pos, 1)
+        X_val = np.delete(X_val, curr_max_pos, 1)
+        feature_elim.append(curr_max_feature)
+        scores[i] = curr_scores
+        
+        print(curr_X_train.shape)
+        
+        if i==3:
+            assert False
+        
+    scores = pd.DataFrame(scores, columns=features)
+                
+    return scores, feature_elim
+
+def test_features2(X_df, y, model, random_state=1):
+    '''
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        Array containing the data used to train the model.
+    y : numpy.ndarray
+        Structured array where each element is a tuple of length 2 and type 
+        [(bool), (float)] containing the target for the training.
+
+    Returns
+    -------
+    scores : numpy.ndarray
+        Array (length=X.shape[1]) containing the concordance indices for 
+        each feature in X.
+
+    '''
+    X = np.array(X_df)
+    n_features = X.shape[1]
+    features = np.array(X_df.columns)
+    use_cols = list(X_df.columns)
+    scores = np.zeros((n_features, n_features))
+    feature_elim = []
+    best_features = []
+    best_score = 0
+    
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=random_state)
+    
+    for i in tqdm(range(n_features)):
+        curr_scores = np.zeros(n_features)
+        curr_max_feature = None
+        curr_max_score = 0
+        curr_max_pos = -1
+        
+        for j in range(n_features):
+            remove = False
+            curr_feature = features[j]
+            
+            if curr_feature in use_cols:
+                remove = True
+                curr_use_cols = [val for val in features if val in use_cols and not val==curr_feature]
+                if len(curr_use_cols)==0: curr_use_cols = [curr_feature]
+                
+            else:
+                curr_use_cols = [val for val in features if val in use_cols or val==curr_feature]
+                
+            curr_X_df = X_df[curr_use_cols]
+            curr_X = np.array(curr_X_df)
+            curr_X_train, curr_X_val, y_train, y_val = train_test_split(curr_X, y, test_size=0.3, random_state=random_state)
+            
+            model.fit(curr_X_train, y_train)
+            pred = model.predict(curr_X_val)
+            #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
+            curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
+            curr_scores[j] = curr_score
+            
+            if curr_score > curr_max_score and remove:
+                curr_max_score = curr_score
+                curr_max_feature = curr_feature
+                curr_max_pos = np.argwhere(np.array(use_cols)==curr_feature)[0,0]
+
+            if curr_score > best_score:
+                best_score = curr_score
+                best_features = curr_use_cols
+                
+        if curr_max_pos == -1:
+            print(f"curr_min_pos is {curr_max_pos}")
+                
+        use_cols.pop(curr_max_pos)
+        feature_elim.append(curr_max_feature)
+        scores[i] = curr_scores
+        
+        
+    scores = pd.DataFrame(scores, columns=features)
+                
+    return scores, feature_elim, best_score, best_features
 
 def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_train.csv', data_file_status=data_dir+'\\target_train.csv'):
     '''
