@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import random
 import matplotlib.pyplot as plt
-from sksurv.linear_model import CoxPHSurvivalAnalysis
+from sksurv.linear_model import CoxPHSurvivalAnalysis, CoxnetSurvivalAnalysis
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
@@ -88,21 +88,51 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
-rsf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
-#rsf = RandomSurvivalForest(random_state=random_state)
-#rsf = RandomSurvivalForest(n_estimators=2, max_depth=5, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+#rsf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
 #vals, fe = u.test_features(X_df, y, rsf)
+rsf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
+vals_cox, fe_cox = u.test_features(X_df, y, rsf)
 
 # %%
 
-rsf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
-#rsf = RandomSurvivalForest(random_state=random_state)
-#rsf = RandomSurvivalForest(n_estimators=2, max_depth=5, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
-vals2, fe2, best_score2, best_cols2 = u.test_features2(X_df[["HB", "PLT", "WBC", "ANC"]], y, rsf)
+from time import time
+
+rsf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
+
+#xx = X_df[[val for val in X_df.columns if not val in ["CHR_19", "GENE_PHF6"]]]
+#yy = y
+
+xx, yy = u.test_features(X_df, y, rsf)
 
 # %%
 
-use_cols = [val for val in X_df.columns if val in fe[30:]]
+rsf = CoxPHSurvivalAnalysis(n_iter=20, tol=1e-9)
+
+xxx = xx[:, 0:]
+
+st = time()
+rsf.fit(xxx, yy)
+pred = rsf.predict(xxx)
+ind = concordance_index_censored(yy['status'], yy['time'], pred)[0]
+indp = concordance_index_ipcw(yy, yy, pred)[0]
+print(time()-st)
+print(ind, indp)
+
+# %%
+
+#rsf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+#vals2, fe2, best_score2, best_cols2 = u.test_features2(X_df, y, rsf)
+rsf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
+vals2_cox, fe2_cox, best_score2_cox, best_cols2_cox = u.test_features2(X_df, y, rsf)
+
+# %%
+
+vals_cox.to_csv(data_dir + "cox_remove_features.csv")
+vals2_cox.to_csv(data_dir + "cox_all_combinations.csv")
+
+# %%
+
+use_cols = [val for val in X_df.columns if val in fe_cox[30:]]
 
 # %%
 
@@ -117,7 +147,8 @@ X_val = np.array(X_val[use_cols])
 
 # Train Random Survival Forest model
 #clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-clf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+#clf = RandomSurvivalForest(n_estimators=300, max_depth=10, min_samples_split=20, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf = RandomSurvivalForest(n_estimators=300, max_depth=None, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0)
 #clf = RandomSurvivalForest()
 clf.fit(X_train, y_train)
 #threshold = 0.5
@@ -131,26 +162,34 @@ print(f"Validation C-Index and IPCW C-Index: {ind:0.4f}, {indp:0.4f}")
 
 # %%
 
-# Prepare dataset with selected features
-X_df1 = X_df[use_cols] # shape (3173, len(use_cols))
-X1 = np.array(X_df1)
-
-# Train-test split with selected features
-X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
+X1 = np.array(X_df[use_cols])
 
 # Train Random Survival Forest model
 #clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-clf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
+clf = RandomSurvivalForest(n_estimators=300, max_depth=None, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0)
 #clf = RandomSurvivalForest()
-clf.fit(X_train1, y_train1)
+clf.fit(X1, y)
 #threshold = 0.5
 
 # Evaluate Random Survival Forest model
-pt = clf.predict(X_val1)
-ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], pt)[0]
-indp1 = concordance_index_ipcw(y_train1, y_val1, pt)[0]
-print(f"Training C-Index and IPCW C-Index:   {clf.score(X_train1, y_train1):0.4f}, {concordance_index_ipcw(y_train1, y_train1, clf.predict(X_train1))[0]:0.4f}")
-print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
+pt = clf.predict(X1)
+ind = concordance_index_censored(y['status'], y['time'], pt)[0]
+indp = concordance_index_ipcw(y, y, pt)[0]
+print(f"Training C-Index and IPCW C-Index:   {ind:0.4f}, {indp:0.4f}")
+
+# %%
+
+# Prepare test submission data
+patient_ids_sub = a.patient_ids_sub
+X_sub_df1 = X_sub_df[use_cols]
+X_sub = np.array(X_sub_df1)
+
+# %%
+
+# Generate predictions for the test set
+pt_sub = clf.predict(X_sub)
+submission_df1 = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
+submission_df1.to_csv(data_dir + "\\submission_files\\rsf5.csv", index=False)
 
 # %%
 

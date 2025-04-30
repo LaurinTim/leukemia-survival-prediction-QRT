@@ -310,9 +310,8 @@ def test_features(X_df, y, model, random_state=1):
         curr_max_feature = None
         curr_max_score = 0
         curr_max_pos = -1
-        
+                
         for j in range(len(features_pop)):
-            if i==2: st=time()
             curr_feature = features_pop[j]
             curr_X_train = np.copy(X_train)
             curr_X_val = np.copy(X_val)
@@ -325,24 +324,19 @@ def test_features(X_df, y, model, random_state=1):
             model.fit(curr_X_train, y_train)
             if i==2: print(time()-stt, curr_X_train.shape)
             
-            if i==2: sttt=time()
-            pred = model.predict(curr_X_val)
-            if i==2: print(time()-sttt)
+            if i==2: return curr_X_train, y_train
             
-            if i==2: stttt=time()
+            pred = model.predict(curr_X_val)
+            
             #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
             curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
             curr_scores[np.argwhere(features==curr_feature)] = curr_score
-            if i==2: print(time()-stttt)
             
             if curr_score > curr_max_score:
                 curr_max_score = curr_score
                 curr_max_feature = curr_feature
                 curr_max_pos = j
-            
-            if i==2: print(time()-st)
-            if i==2: print()
-                
+                            
         if curr_max_pos == -1:
             print(f"curr_min_pos is {curr_max_pos}")
                
