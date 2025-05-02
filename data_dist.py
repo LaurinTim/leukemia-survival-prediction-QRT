@@ -39,7 +39,7 @@ import os
 os.chdir(data_dir)
 
 # Import utility functions from model_rsf_utils
-import model_rsf_utils as u
+import utils as u
 
 # %%
 
@@ -116,6 +116,7 @@ xha = np.array(X_df[column])
 #xh = xh[xh!=0]
 
 ax.hist(np.log(xh+1e-9), bins=100)
+#ax.hist(xh, bins=100)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -131,8 +132,8 @@ xha = np.array(X_df[column])
 
 #xh = xh[xh!=0]
 
-#ax.hist(np.log(xh+1e-9), bins=50)
-ax.hist(xh, bins=50)
+ax.hist(np.log(xh+1e-9), bins=50)
+#ax.hist(xh, bins=50)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -149,6 +150,7 @@ xha = np.array(X_df[column])
 #xh = xh[xh!=0]
 
 ax.hist(np.log(xh+1e-9), bins=50)
+#ax.hist(xh, bins=50)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -196,9 +198,10 @@ fig, ax = plt.subplots(figsize=(10,5))
 xh = np.array(X_df[column][y["status"]==True])
 xha = np.array(X_df[column])
 
-xh = xh[xh!=0]
+#xh = xh[xh!=0]
 
 ax.hist(np.log(xh+1e-9), bins=50)
+#ax.hist(xh, bins=50)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -214,7 +217,8 @@ xha = np.array(X_df[column])
 
 xh = xh[xh!=0]
 
-ax.hist(xh**0.5, bins=30)
+#ax.hist(xh**0.5, bins=30)
+ax.hist(xh, bins=50)
 ax.set_title(column + " hist")
 
 plt.show()
@@ -246,8 +250,8 @@ xha = np.array(X_df[column])
 
 xh = xh[xh!=0]
 
-#ax.hist(xh**0.2, bins=50)
-ax.hist(xh, bins=100)
+ax.hist(xh**0.2, bins=50)
+#ax.hist(xh, bins=100)
 ax.set_title(column + " hist")
 
 plt.show()

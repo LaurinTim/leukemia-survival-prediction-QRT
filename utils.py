@@ -719,17 +719,8 @@ class Dataset():
         self.__getData()
         
         X_sum = np.sum(self.X.astype(bool), axis=0)
-        self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
+        self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["WBC_l12", "ANC_s0.5"] + ["XX", "XY"] + ["CYTO_FAVORABLE", "CYTO_ADVERSE", "CYTO_NONE"] + 
                                                                                   ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
-        self.X.loc[:, "BM_BLAST"] = np.log(self.X["BM_BLAST"]+1e-9)
-        self.X.loc[:, "PLT"] = np.log(self.X["PLT"]+1e-9)
-        self.X.loc[:, "WBC"] = np.log((self.X["WBC"]-0.15)+1e-9)
-        self.X.loc[:, "ANC"] = np.log((self.X["ANC"]+1)*1e-9)
-        self.X.loc[:, "MONOCYTES"] = np.log(self.X["MONOCYTES"]+1e-9)
-        self.X.loc[:, "VAF_SUM"] = self.X["VAF_SUM"]**0.5
-        self.X.loc[:, "VAF_MEDIAN"] = self.X["VAF_MEDIAN"]**0.5
-        self.X.loc[:, "DEPTH_SUM"] = self.X["DEPTH_SUM"]**0.2
-        self.X.loc[:, "DEPTH_MEDIAN"] = self.X["DEPTH_MEDIAN"]**0.2
         
         #remove columns corresponding to features from self.X which are present in less than min_occurences patients
         sparse_features = self.X.columns
@@ -738,16 +729,6 @@ class Dataset():
         
         #get the submission data and patient ids
         self.X_sub, self.patient_ids_sub = self.submission_data(clinical_df_sub, molecular_df_sub)
-        
-        self.X_sub.loc[:, "BM_BLAST"] = np.log(self.X_sub["BM_BLAST"]+1e-9)
-        self.X_sub.loc[:, "PLT"] = np.log(self.X_sub["PLT"]+1e-9)
-        self.X_sub.loc[:, "WBC"] = np.log((self.X_sub["WBC"]-0.15)+1e-9)
-        self.X_sub.loc[:, "ANC"] = np.log((self.X_sub["ANC"]+1)*1e-9)
-        self.X_sub.loc[:, "MONOCYTES"] = np.log(self.X_sub["MONOCYTES"]+1e-9)
-        self.X_sub.loc[:, "VAF_SUM"] = self.X_sub["VAF_SUM"]**0.5
-        self.X_sub.loc[:, "VAF_MEDIAN"] = self.X_sub["VAF_MEDIAN"]**0.5
-        self.X_sub.loc[:, "DEPTH_SUM"] = self.X_sub["DEPTH_SUM"]**0.2
-        self.X_sub.loc[:, "DEPTH_MEDIAN"] = self.X_sub["DEPTH_MEDIAN"]**0.2
         
         #repeat the search for the sparse features in the submission data
         #remove any columns from both the training and submission data that occur less than min_occurences/3 times in the submission data
@@ -853,24 +834,39 @@ class Dataset():
         status_item = (bool(curr_status[2]), curr_status[1])
         
         #get clinical_item which is part of item which gets returned
-        clinical_item = np.zeros(len(clinical_features)+2+len(cyto_markers))
+        clinical_item = np.zeros(len(clinical_features) + 2 + 2 + len(cyto_markers))
         clinical_item[0:len(clinical_features)] = curr_clinical[clinical_indices]
+        clinical_item[len(clinical_features)] = 1 if curr_clinical[3] > 12 else 0
+        clinical_item[len(clinical_features)+1] = 1 if curr_clinical[4] < 0.5 else 0
         curr_cyto = curr_clinical[8]
         #if there are no cytogenetics for the current patient available, the columns for XX or XY chromosomes are left at 0
         if str(curr_cyto)!="nan":
             curr_cyto = curr_cyto.strip().upper()
             if ",XX," == curr_cyto[2:6] or ",XX[" == curr_cyto[2:6] or "46,XX" == curr_cyto:
-                clinical_item[len(clinical_features)] = 1
+                clinical_item[len(clinical_features)+2] = 1
             if ",XY," == curr_cyto[2:6] or ",XY[" == curr_cyto[2:6] or "46,XY" == curr_cyto:
-                clinical_item[len(clinical_features)+1] = 1
+                clinical_item[len(clinical_features)+3] = 1
             if "~" == curr_cyto[2]:
                 if ",XX," == curr_cyto[5:9] or ",XX[" == curr_cyto[5:9]:
-                    clinical_item[len(clinical_features)] = 1
+                    clinical_item[len(clinical_features)+2] = 1
                 if ",XY," == curr_cyto[5:9] or ",XY[" == curr_cyto[5:9]:
-                    clinical_item[len(clinical_features)+1] = 1
+                    clinical_item[len(clinical_features)+3] = 1
+        
         #check which cytogenetic markers are in the current patients cytogenetics
-        curr_cyto_risk = self.cyto_patient_risk(curr_cyto)
-        clinical_item[len(clinical_features)+2:] = curr_cyto_risk
+        cyto_str = str(curr_cyto).upper().strip()
+        favorable_markers = ["T(8;21", "INV(16", "T(16;16", "T(15;17"]  # common favorable
+        adverse_markers = ["DEL(5Q", "-5", "-7", "-17", "ABN(17P", "T(6;9", "T(9;22", "INV(3", "T(3;3"]  # common adverse
+        
+        has_favorable = any(m in cyto_str for m in favorable_markers)
+        has_adverse = any(m in cyto_str for m in adverse_markers)
+        abn_count = len([p for p in cyto_str.split(',')[2:] if p])
+        complex_flag = (abn_count >= 3)
+        if complex_flag:
+            has_adverse = True
+        
+        clinical_item[len(clinical_features)+2+2] = int(has_favorable and not has_adverse)
+        clinical_item[len(clinical_features)+2+3] = int(has_adverse)
+        clinical_item[len(clinical_features)+2+4] = int(not has_favorable and not has_adverse)
         
         #molecular data for the current patient
         curr_molecular = np.array(self.molecular_df[self.molecular_df["ID"]==curr_patient_id])
@@ -895,6 +891,9 @@ class Dataset():
             
             #number of mutations
             molecular_item[0] = len(curr_molecular)
+            
+            molecular_item[1]
+            
             #average length of the mutations
             #molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
             #median length of the mutations with length greater than 0
@@ -1074,22 +1073,39 @@ class Dataset():
         '''
         #prepare this the same way as in Dataset.__getItem
         curr_patient_id = curr_clinical[0]
-        clinical_item = np.zeros(len(clinical_features)+2+len(cyto_markers))
+        clinical_item = np.zeros(len(clinical_features) + 2 + 2 + len(cyto_markers))
         clinical_item[0:len(clinical_features)] = curr_clinical[clinical_indices]
+        clinical_item[len(clinical_features)] = 1 if curr_clinical[3] > 12 else 0
+        clinical_item[len(clinical_features)+1] = 1 if curr_clinical[4] < 0.5 else 0
         curr_cyto = curr_clinical[8]
+        #if there are no cytogenetics for the current patient available, the columns for XX or XY chromosomes are left at 0
         if str(curr_cyto)!="nan":
             curr_cyto = curr_cyto.strip().upper()
             if ",XX," == curr_cyto[2:6] or ",XX[" == curr_cyto[2:6] or "46,XX" == curr_cyto:
-                clinical_item[len(clinical_features)] = 1
+                clinical_item[len(clinical_features)+2] = 1
             if ",XY," == curr_cyto[2:6] or ",XY[" == curr_cyto[2:6] or "46,XY" == curr_cyto:
-                clinical_item[len(clinical_features)+1] = 1
+                clinical_item[len(clinical_features)+3] = 1
             if "~" == curr_cyto[2]:
                 if ",XX," == curr_cyto[5:9] or ",XX[" == curr_cyto[5:9]:
-                    clinical_item[len(clinical_features)] = 1
+                    clinical_item[len(clinical_features)+2] = 1
                 if ",XY," == curr_cyto[5:9] or ",XY[" == curr_cyto[5:9]:
-                    clinical_item[len(clinical_features)+1] = 1
-        curr_cyto_risk = self.cyto_patient_risk(curr_cyto)
-        clinical_item[len(clinical_features)+2:] = curr_cyto_risk
+                    clinical_item[len(clinical_features)+3] = 1
+        
+        #check which cytogenetic markers are in the current patients cytogenetics
+        cyto_str = str(curr_cyto).upper().strip()
+        favorable_markers = ["T(8;21", "INV(16", "T(16;16", "T(15;17"]  # common favorable
+        adverse_markers = ["DEL(5Q", "-5", "-7", "-17", "ABN(17P", "T(6;9", "T(9;22", "INV(3", "T(3;3"]  # common adverse
+        
+        has_favorable = any(m in cyto_str for m in favorable_markers)
+        has_adverse = any(m in cyto_str for m in adverse_markers)
+        abn_count = len([p for p in cyto_str.split(',')[2:] if p])
+        complex_flag = (abn_count >= 3)
+        if complex_flag:
+            has_adverse = True
+        
+        clinical_item[len(clinical_features)+2+2] = int(has_favorable and not has_adverse)
+        clinical_item[len(clinical_features)+2+3] = int(has_adverse)
+        clinical_item[len(clinical_features)+2+4] = int(not has_favorable and not has_adverse)
                 
         if len(curr_molecular)==0:
             molecular_item = np.zeros(self.molecular_df.shape[1]+1)
