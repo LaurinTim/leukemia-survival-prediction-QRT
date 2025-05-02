@@ -90,49 +90,24 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 #rsf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
 #vals, fe = u.test_features(X_df, y, rsf)
-rsf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
+rsf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-5)
 vals_cox, fe_cox = u.test_features(X_df, y, rsf)
-
-# %%
-
-from time import time
-
-rsf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
-
-#xx = X_df[[val for val in X_df.columns if not val in ["CHR_19", "GENE_PHF6"]]]
-#yy = y
-
-xx, yy = u.test_features(X_df, y, rsf)
-
-# %%
-
-rsf = CoxPHSurvivalAnalysis(n_iter=20, tol=1e-9)
-
-xxx = xx[:, 0:]
-
-st = time()
-rsf.fit(xxx, yy)
-pred = rsf.predict(xxx)
-ind = concordance_index_censored(yy['status'], yy['time'], pred)[0]
-indp = concordance_index_ipcw(yy, yy, pred)[0]
-print(time()-st)
-print(ind, indp)
 
 # %%
 
 #rsf = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
 #vals2, fe2, best_score2, best_cols2 = u.test_features2(X_df, y, rsf)
-rsf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
+rsf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-5)
 vals2_cox, fe2_cox, best_score2_cox, best_cols2_cox = u.test_features2(X_df, y, rsf)
 
 # %%
 
 vals_cox.to_csv(data_dir + "cox_remove_features.csv")
-vals2_cox.to_csv(data_dir + "cox_all_combinations.csv")
+#vals2_cox.to_csv(data_dir + "cox_all_combinations.csv")
 
 # %%
 
-use_cols = [val for val in X_df.columns if val in fe_cox[30:]]
+use_cols = [val for val in X_df.columns if val in fe_cox[26:]]
 
 # %%
 
@@ -148,8 +123,9 @@ X_val = np.array(X_val[use_cols])
 # Train Random Survival Forest model
 #clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
 #clf = RandomSurvivalForest(n_estimators=300, max_depth=10, min_samples_split=20, min_samples_leaf=3, n_jobs=-1, random_state=0)
-clf = RandomSurvivalForest(n_estimators=300, max_depth=None, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0)
+#clf = RandomSurvivalForest(n_estimators=300, max_depth=None, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0)
 #clf = RandomSurvivalForest()
+clf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
 clf.fit(X_train, y_train)
 #threshold = 0.5
 
@@ -166,8 +142,9 @@ X1 = np.array(X_df[use_cols])
 
 # Train Random Survival Forest model
 #clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-clf = RandomSurvivalForest(n_estimators=300, max_depth=None, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0)
+#clf = RandomSurvivalForest(n_estimators=300, max_depth=None, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0)
 #clf = RandomSurvivalForest()
+clf = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
 clf.fit(X1, y)
 #threshold = 0.5
 
@@ -189,7 +166,7 @@ X_sub = np.array(X_sub_df1)
 # Generate predictions for the test set
 pt_sub = clf.predict(X_sub)
 submission_df1 = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
-submission_df1.to_csv(data_dir + "\\submission_files\\rsf5.csv", index=False)
+submission_df1.to_csv(data_dir + "\\submission_files\\rsf6.csv", index=False)
 
 # %%
 

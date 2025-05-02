@@ -320,16 +320,16 @@ def test_features(X_df, y, model, random_state=1):
                 curr_X_train = np.delete(curr_X_train, j, 1)
                 curr_X_val = np.delete(curr_X_val, j, 1)
             
-            if i==2: stt=time()
-            model.fit(curr_X_train, y_train)
-            if i==2: print(time()-stt, curr_X_train.shape)
-            
-            if i==2: return curr_X_train, y_train
-            
-            pred = model.predict(curr_X_val)
-            
-            #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
-            curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
+            try:
+                model.fit(curr_X_train, y_train)
+            except:
+                print(f"model fit error ({i},{j})")
+                curr_score = scores[i-1][j]
+            else:
+                pred = model.predict(curr_X_val)
+                #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
+                curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
+                
             curr_scores[np.argwhere(features==curr_feature)] = curr_score
             
             if curr_score > curr_max_score:
@@ -345,11 +345,6 @@ def test_features(X_df, y, model, random_state=1):
         X_val = np.delete(X_val, curr_max_pos, 1)
         feature_elim.append(curr_max_feature)
         scores[i] = curr_scores
-        
-        print(curr_X_train.shape)
-        
-        if i==3:
-            assert False
         
     scores = pd.DataFrame(scores, columns=features)
                 
@@ -406,10 +401,16 @@ def test_features2(X_df, y, model, random_state=1):
             curr_X = np.array(curr_X_df)
             curr_X_train, curr_X_val, y_train, y_val = train_test_split(curr_X, y, test_size=0.3, random_state=random_state)
             
-            model.fit(curr_X_train, y_train)
-            pred = model.predict(curr_X_val)
-            #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
-            curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
+            try:
+                model.fit(curr_X_train, y_train)
+            except:
+                print(f"model fit error ({i},{j})")
+                curr_score = scores[i-1][j]
+            else:
+                pred = model.predict(curr_X_val)
+                #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
+                curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
+                
             curr_scores[j] = curr_score
             
             if curr_score > curr_max_score and remove:
@@ -720,9 +721,15 @@ class Dataset():
         X_sum = np.sum(self.X.astype(bool), axis=0)
         self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
                                                                                   ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
-        
-        #self.X.loc[:, "WBC"] = np.log((self.X["WBC"]-0.15)+1e-9)
-        #self.X.loc[:, "ANC"] = np.log((self.X["ANC"]+1)*1e-9)
+        self.X.loc[:, "BM_BLAST"] = np.log(self.X["BM_BLAST"]+1e-9)
+        self.X.loc[:, "PLT"] = np.log(self.X["PLT"]+1e-9)
+        self.X.loc[:, "WBC"] = np.log((self.X["WBC"]-0.15)+1e-9)
+        self.X.loc[:, "ANC"] = np.log((self.X["ANC"]+1)*1e-9)
+        self.X.loc[:, "MONOCYTES"] = np.log(self.X["MONOCYTES"]+1e-9)
+        self.X.loc[:, "VAF_SUM"] = self.X["VAF_SUM"]**0.5
+        self.X.loc[:, "VAF_MEDIAN"] = self.X["VAF_MEDIAN"]**0.5
+        self.X.loc[:, "DEPTH_SUM"] = self.X["DEPTH_SUM"]**0.2
+        self.X.loc[:, "DEPTH_MEDIAN"] = self.X["DEPTH_MEDIAN"]**0.2
         
         #remove columns corresponding to features from self.X which are present in less than min_occurences patients
         sparse_features = self.X.columns
@@ -731,6 +738,16 @@ class Dataset():
         
         #get the submission data and patient ids
         self.X_sub, self.patient_ids_sub = self.submission_data(clinical_df_sub, molecular_df_sub)
+        
+        self.X_sub.loc[:, "BM_BLAST"] = np.log(self.X_sub["BM_BLAST"]+1e-9)
+        self.X_sub.loc[:, "PLT"] = np.log(self.X_sub["PLT"]+1e-9)
+        self.X_sub.loc[:, "WBC"] = np.log((self.X_sub["WBC"]-0.15)+1e-9)
+        self.X_sub.loc[:, "ANC"] = np.log((self.X_sub["ANC"]+1)*1e-9)
+        self.X_sub.loc[:, "MONOCYTES"] = np.log(self.X_sub["MONOCYTES"]+1e-9)
+        self.X_sub.loc[:, "VAF_SUM"] = self.X_sub["VAF_SUM"]**0.5
+        self.X_sub.loc[:, "VAF_MEDIAN"] = self.X_sub["VAF_MEDIAN"]**0.5
+        self.X_sub.loc[:, "DEPTH_SUM"] = self.X_sub["DEPTH_SUM"]**0.2
+        self.X_sub.loc[:, "DEPTH_MEDIAN"] = self.X_sub["DEPTH_MEDIAN"]**0.2
         
         #repeat the search for the sparse features in the submission data
         #remove any columns from both the training and submission data that occur less than min_occurences/3 times in the submission data
