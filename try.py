@@ -13,6 +13,14 @@ molecular_file = data_dir+'\\X_train\\molecular_train.csv'  # Molecular informat
 clinical_file_test = data_dir+'\\X_test\\clinical_test.csv'  # Clinical test data for model submission
 molecular_file_test = data_dir+'\\X_test\\molecular_test.csv'  # Molecular test data for model submission
 
+import os
+os.chdir(data_dir)
+
+# Import utility functions from model_rsf_utils
+import utils as u
+
+# %%
+
 # Load training datasets
 clinical_train = pd.read_csv(clinical_file)      # clinical features with patient ID
 molecular_train = pd.read_csv(molecular_file)    # mutation list per patient ID
@@ -39,8 +47,15 @@ print("Number of unique genes in data:", gene_mutations.shape[1])
 mutation_count = molecular_train.groupby('ID').size()  # series with ID index
 mutation_count.name = "mutation_count"
 
+effects_map = u.effect_to_survival_map()
+effects_survival = pd.DataFrame([list(molecular_train["ID"]), [effects_map.get(val) for val in molecular_train["EFFECT"]]], index=["ID", "EFFECTS_SURVIVAL"]).T
+effects_survival = effects_survival.groupby("ID")["EFFECTS_SURVIVAL"].mean()
+
+effects = molecular_train.groupby(["ID", "EFFECT"]).size().unstack(fill_value=0)
+effects = (effects > 0).astype(int)
+
 # Merge gene mutation features into the main training DataFrame
-train_df = train_df.set_index('ID').join(gene_mutations, how='left').join(mutation_count, how='left')
+train_df = train_df.set_index('ID').join(gene_mutations, how='left').join(mutation_count, how='left').join(effects, how="left").join(effects_survival, how="left")
 train_df.fillna(0, inplace=True)  # fill missing gene indicators (patients with no mutations) with 0
 train_df.reset_index(inplace=True)
 
@@ -55,6 +70,7 @@ numeric_cols = ['BM_BLAST','WBC','ANC','MONOCYTES','HB','PLT']
 for col in numeric_cols:
     train_df.loc[:,col] = train_df[col].fillna(train_df[col].median())
 
+'''
 # Encode CYTOGENETICS into categorical flags
 def classify_cytogenetics(cyto_str):
     if pd.isna(cyto_str) or cyto_str == "" or type(cyto_str) == int:
@@ -75,10 +91,31 @@ train_df['cyto_normal'] = (train_df['cyto_category'] == 'normal').astype(int)
 train_df['cyto_complex'] = (train_df['cyto_category'] == 'complex').astype(int)
 # We can drop 'cyto_category' and let 'other abnormal' be implied when both flags are 0
 train_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
+'''
+
+def classify_cytogenetics(cyto_str):
+    if pd.isna(cyto_str) or cyto_str == "" or type(cyto_str) == int:
+        return "unknown"
+    s = cyto_str.lower()
+    adverse_markers = ["complex", "-5", "del(5q)", "MONOSOMY 5", "-7", "del(7)", "MONOSOMY 7", "17p", "-17", "inv(3)/t(3;3)", "t(6;9)", "t(9;22)"]
+    favorable_markers = ["t(8;21)", "(q22;q22.1)", " inv(16)", "(p13.1q22)", "t(16;16)", "t(15;17) (apl)", "t(15;17)(apl)"]
+    if any(mark in s for mark in adverse_markers):
+        return "adverse"
+    if any(mark in s for mark in favorable_markers):
+        return "favorable"
+    return "normal"
+
+train_df['cyto_category'] = train_df['CYTOGENETICS'].apply(classify_cytogenetics)
+# One-hot encode the cytogenetics category (complex/normal/abnormal)
+train_df['cyto_normal'] = (train_df['cyto_category'] == 'normal').astype(int)
+train_df['cyto_adverse'] = (train_df['cyto_category'] == 'adverse').astype(int)
+train_df['cyto_favorable'] = (train_df['cyto_category'] == 'favorable').astype(int)
+# We can drop 'cyto_category' and let 'other abnormal' be implied when both flags are 0
+train_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
 
 # One-hot encode the Center category
-train_df = pd.get_dummies(train_df, columns=['CENTER'], drop_first=True)
-#train_df.drop(columns=["CENTER"], inpace=True)
+#train_df = pd.get_dummies(train_df, columns=['CENTER'], drop_first=True)
+train_df.drop(columns=["CENTER"], inplace=True)
 print("Final training feature columns:", train_df.columns.tolist())
 
 # %%
@@ -130,10 +167,12 @@ from sksurv.ensemble import GradientBoostingSurvivalAnalysis
 
 tau = train_df["OS_YEARS"].max()
 
+estimators = 400
+
 cox_model = CoxPHSurvivalAnalysis()  # Cox proportional hazards model
-rsf_model = RandomSurvivalForest(n_estimators=200, min_samples_split=10, min_samples_leaf=3,
+rsf_model = RandomSurvivalForest(n_estimators=estimators, min_samples_split=10, min_samples_leaf=3,
                                  random_state=0)
-gb_model  = GradientBoostingSurvivalAnalysis(n_estimators=200, learning_rate=0.1,
+gb_model  = GradientBoostingSurvivalAnalysis(n_estimators=estimators, learning_rate=0.1,
                                             max_depth=3, random_state=0)
 
 # %%
