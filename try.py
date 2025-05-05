@@ -78,6 +78,7 @@ train_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
 
 # One-hot encode the Center category
 train_df = pd.get_dummies(train_df, columns=['CENTER'], drop_first=True)
+#train_df.drop(columns=["CENTER"], inpace=True)
 print("Final training feature columns:", train_df.columns.tolist())
 
 # %%
@@ -130,9 +131,9 @@ from sksurv.ensemble import GradientBoostingSurvivalAnalysis
 tau = train_df["OS_YEARS"].max()
 
 cox_model = CoxPHSurvivalAnalysis()  # Cox proportional hazards model
-rsf_model = RandomSurvivalForest(n_estimators=1000, min_samples_split=10, min_samples_leaf=3,
+rsf_model = RandomSurvivalForest(n_estimators=200, min_samples_split=10, min_samples_leaf=3,
                                  random_state=0)
-gb_model  = GradientBoostingSurvivalAnalysis(n_estimators=1000, learning_rate=0.1,
+gb_model  = GradientBoostingSurvivalAnalysis(n_estimators=200, learning_rate=0.1,
                                             max_depth=3, random_state=0)
 
 # %%
@@ -150,7 +151,7 @@ rsf_param_grid = {
 rsf_grid = GridSearchCV(
     as_concordance_index_ipcw_scorer(rsf_model, tau=tau),
     param_grid=rsf_param_grid,
-    cv=MaxTimeHoldoutKFold(n_splits=10, random_state=0),
+    cv=MaxTimeHoldoutKFold(n_splits=5, random_state=0),
     verbose=3
 )
 
@@ -165,13 +166,14 @@ print("Best RSF IPCW C-index:", rsf_grid.best_score_)
 # best score: 0.7060
 gb_param_grid = {
     "estimator__max_features": [None, "log2", "sqrt"]
+    #"estimator__dropout_rate": [0.0, 0.3]
     #"estimator__max_depth": [None, 10]
 }
 
 gb_grid = GridSearchCV(
     as_concordance_index_ipcw_scorer(gb_model, tau=tau),
     param_grid=gb_param_grid,
-    cv=MaxTimeHoldoutKFold(n_splits=10, random_state=0),
+    cv=MaxTimeHoldoutKFold(n_splits=5, random_state=0),
     verbose=3
 )
 gb_grid.fit(X_train, y_train)
