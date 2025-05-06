@@ -258,18 +258,18 @@ def fit_and_score_features2(X_df, y, random_state=1):
     skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
     lasso_model = CoxnetSurvivalAnalysis()
     
-    n_features=1
+    #n_features=1
     
     for j in tqdm(range(n_features)):
         Xj_train = X_train[:, j : j + 1]
         Xj_val = X_val[:, j : j + 1]
-        Xj_train = X_train
-        Xj_val = X_val
+        #Xj_train = X_train
+        #Xj_val = X_val
         
         cdf_train = df_train[["duration", "status", features[j]]]
-        cdf_train = df_train
+        #cdf_train = df_train
         cdf_val = df_val[["duration", "status", features[j]]]
-        cdf_val = df_val
+        #cdf_val = df_val
         
         scores[j,0], scores[j,1] = cox_score(Xj_train, y_train, rsf_model, x_val = Xj_val, y_val = y_val)
         scores[j,2], scores[j,3], scores[j,-1] = regression_score(cdf_train, y_train, PH_model, df_val = cdf_val, y_val = y_val)
