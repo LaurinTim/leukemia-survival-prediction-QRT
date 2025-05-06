@@ -299,7 +299,10 @@ params = {
     'aft_loss_distribution':        'normal',  # or 'logistic', 'extreme'
     'aft_loss_distribution_scale':  1.1,
     'tree_method': 'gpu_hist',   # or 'gpu_hist' if you have a GPU
-    'learning_rate': 0.1
+    'learning_rate': 0.09,
+    "max_depth": 6,
+    "max_leaves": 8,
+    "max_bin": 10
 }
 
 # 4) Train with xgb.train (sklearn wrapper doesn’t yet expose the lower/upper labels)
