@@ -17,7 +17,7 @@ import os
 os.chdir(data_dir)
 
 # Import utility functions from model_rsf_utils
-import utils as u
+import other.utils as u
 
 # %%
 
@@ -68,9 +68,11 @@ print(train_df[feature_cols].head(3))
 # Impute missing numeric values in clinical features with median
 numeric_cols = ['BM_BLAST','WBC','ANC','MONOCYTES','HB','PLT']
 for col in numeric_cols:
-    train_df.loc[:,col] = train_df[col].fillna(train_df[col].median())
+    #train_df.loc[:,col] = train_df[col].fillna(train_df[col].median())
+    train_df.loc[:,col] = train_df[col].fillna(0)
 
-'''
+# %%
+
 # Encode CYTOGENETICS into categorical flags
 def classify_cytogenetics(cyto_str):
     if pd.isna(cyto_str) or cyto_str == "" or type(cyto_str) == int:
@@ -91,8 +93,8 @@ train_df['cyto_normal'] = (train_df['cyto_category'] == 'normal').astype(int)
 train_df['cyto_complex'] = (train_df['cyto_category'] == 'complex').astype(int)
 # We can drop 'cyto_category' and let 'other abnormal' be implied when both flags are 0
 train_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
-'''
 
+'''
 def classify_cytogenetics(cyto_str):
     if pd.isna(cyto_str) or cyto_str == "" or type(cyto_str) == int:
         return "unknown"
@@ -100,18 +102,23 @@ def classify_cytogenetics(cyto_str):
     adverse_markers = ["complex", "-5", "del(5q)", "MONOSOMY 5", "-7", "del(7)", "MONOSOMY 7", "17p", "-17", "inv(3)/t(3;3)", "t(6;9)", "t(9;22)"]
     favorable_markers = ["t(8;21)", "(q22;q22.1)", " inv(16)", "(p13.1q22)", "t(16;16)", "t(15;17) (apl)", "t(15;17)(apl)"]
     if any(mark in s for mark in adverse_markers):
+        #print([mark for mark in adverse_markers if mark in s])
+        #adverse = True
         return "adverse"
     if any(mark in s for mark in favorable_markers):
+        print("yeet")
         return "favorable"
     return "normal"
 
 train_df['cyto_category'] = train_df['CYTOGENETICS'].apply(classify_cytogenetics)
+
 # One-hot encode the cytogenetics category (complex/normal/abnormal)
 train_df['cyto_normal'] = (train_df['cyto_category'] == 'normal').astype(int)
 train_df['cyto_adverse'] = (train_df['cyto_category'] == 'adverse').astype(int)
 train_df['cyto_favorable'] = (train_df['cyto_category'] == 'favorable').astype(int)
 # We can drop 'cyto_category' and let 'other abnormal' be implied when both flags are 0
 train_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
+'''
 
 # One-hot encode the Center category
 #train_df = pd.get_dummies(train_df, columns=['CENTER'], drop_first=True)
@@ -171,7 +178,7 @@ estimators = 400
 
 cox_model = CoxPHSurvivalAnalysis()  # Cox proportional hazards model
 rsf_model = RandomSurvivalForest(n_estimators=estimators, min_samples_split=10, min_samples_leaf=3,
-                                 random_state=0)
+                                 max_features="sqrt", random_state=0)
 gb_model  = GradientBoostingSurvivalAnalysis(n_estimators=estimators, learning_rate=0.1,
                                             max_depth=3, random_state=0)
 
@@ -215,6 +222,7 @@ gb_grid = GridSearchCV(
     cv=MaxTimeHoldoutKFold(n_splits=5, random_state=0),
     verbose=3
 )
+
 gb_grid.fit(X_train, y_train)
 print("Best Gradient Boosting parameters:", gb_grid.best_params_)
 print("Best Gradient Boosting IPCW C-index:", gb_grid.best_score_)
