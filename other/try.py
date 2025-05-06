@@ -32,6 +32,13 @@ molecular_train = molecular_train[[True if val in list(target_train["ID"]) else 
 
 # Merge clinical and target data on ID (inner join to include only patients with outcome data)
 train_df = clinical_train.merge(target_train, on="ID")
+
+# Impute missing numeric values in clinical features with median
+numeric_cols = ['BM_BLAST','WBC','ANC','MONOCYTES','HB','PLT']
+for col in numeric_cols:
+    train_df.loc[:,col] = train_df[col].fillna(train_df[col].median())
+    #train_df.loc[:,col] = train_df[col].fillna(0)
+
 print("Training set size:", train_df.shape)
 train_df.head(3)
 
@@ -55,21 +62,14 @@ effects = molecular_train.groupby(["ID", "EFFECT"]).size().unstack(fill_value=0)
 effects = (effects > 0).astype(int)
 
 # Merge gene mutation features into the main training DataFrame
-train_df = train_df.set_index('ID').join(gene_mutations, how='left').join(mutation_count, how='left').join(effects, how="left").join(effects_survival, how="left")
+#train_df = train_df.set_index('ID').join(gene_mutations, how='left').join(mutation_count, how='left').join(effects, how="left").join(effects_survival, how="left")
+train_df = train_df.set_index('ID').join(gene_mutations, how='left').join(mutation_count, how="left")
 train_df.fillna(0, inplace=True)  # fill missing gene indicators (patients with no mutations) with 0
 train_df.reset_index(inplace=True)
 
 print("Sample of engineered features:")
-feature_cols = ['mutation_count'] + list(gene_mutations.columns[:5])  # show mutation count and first 5 genes
-print(train_df[feature_cols].head(3))
-
-# %%
-
-# Impute missing numeric values in clinical features with median
-numeric_cols = ['BM_BLAST','WBC','ANC','MONOCYTES','HB','PLT']
-for col in numeric_cols:
-    #train_df.loc[:,col] = train_df[col].fillna(train_df[col].median())
-    train_df.loc[:,col] = train_df[col].fillna(0)
+#feature_cols = ['mutation_count'] + list(gene_mutations.columns[:5])  # show mutation count and first 5 genes
+#print(train_df[feature_cols].head(3))
 
 # %%
 
@@ -92,7 +92,7 @@ train_df['cyto_category'] = train_df['CYTOGENETICS'].apply(classify_cytogenetics
 train_df['cyto_normal'] = (train_df['cyto_category'] == 'normal').astype(int)
 train_df['cyto_complex'] = (train_df['cyto_category'] == 'complex').astype(int)
 # We can drop 'cyto_category' and let 'other abnormal' be implied when both flags are 0
-train_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
+train_df.drop(columns=['cyto_category'], inplace=True)
 
 '''
 def classify_cytogenetics(cyto_str):
@@ -120,9 +120,12 @@ train_df['cyto_favorable'] = (train_df['cyto_category'] == 'favorable').astype(i
 train_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
 '''
 
+# %%
+
 # One-hot encode the Center category
 #train_df = pd.get_dummies(train_df, columns=['CENTER'], drop_first=True)
-train_df.drop(columns=["CENTER"], inplace=True)
+train_df.drop(columns=["CENTER", "CYTOGENETICS"], inplace=True)
+#train_df.drop(columns=["CENTER"], inplace=True)
 print("Final training feature columns:", train_df.columns.tolist())
 
 # %%
@@ -136,6 +139,14 @@ X_train = train_df.drop(columns=['ID','OS_YEARS','OS_STATUS'])
 y_train = Surv.from_dataframe(event='OS_STATUS', time='OS_YEARS', data=train_df)
 print("X_train shape:", X_train.shape)
 print("y_train[0]:", y_train[0])  # example of (event, time) structure
+
+# %%
+
+count = pd.Series(data = np.sum((X_train != 0).astype(int), axis=0), index=X_train.columns)
+
+# %%
+
+X_train = X_train.loc[:, list(count > 30)]
 
 # %%
 
@@ -174,13 +185,13 @@ from sksurv.ensemble import GradientBoostingSurvivalAnalysis
 
 tau = train_df["OS_YEARS"].max()
 
-estimators = 400
+estimators = 200
 
 cox_model = CoxPHSurvivalAnalysis()  # Cox proportional hazards model
 rsf_model = RandomSurvivalForest(n_estimators=estimators, min_samples_split=10, min_samples_leaf=3,
                                  max_features="sqrt", random_state=0)
 gb_model  = GradientBoostingSurvivalAnalysis(n_estimators=estimators, learning_rate=0.1,
-                                            max_depth=3, random_state=0)
+                                            max_depth=3, max_features=None, random_state=0)
 
 # %%
 
@@ -211,8 +222,8 @@ print("Best RSF IPCW C-index:", rsf_grid.best_score_)
 # best params: loss="coxph", learning_rate=0.1, n_estimators=200
 # best score: 0.7060
 gb_param_grid = {
-    "estimator__max_features": [None, "log2", "sqrt"]
-    #"estimator__dropout_rate": [0.0, 0.3]
+    "estimator__max_features": [None, "log2", "sqrt"],
+    "estimator__dropout_rate": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
     #"estimator__max_depth": [None, 10]
 }
 
@@ -226,6 +237,95 @@ gb_grid = GridSearchCV(
 gb_grid.fit(X_train, y_train)
 print("Best Gradient Boosting parameters:", gb_grid.best_params_)
 print("Best Gradient Boosting IPCW C-index:", gb_grid.best_score_)
+
+# %%
+
+from xgboost import XGBRegressor
+from sklearn.model_selection import train_test_split
+from sksurv.metrics import concordance_index_ipcw
+
+Xt, Xv, yt, yv = train_test_split(X_train, y_train, test_size=0.3, random_state=1)
+
+xg = XGBRegressor(objective="survival:cox", eval_metric="cox-nloglik", tree_mode="hist",
+                  n_estimators=200, max_depth=4, max_leaves=20, max_bin=9, gamma=0.1, min_child_weight=23,
+                  learning_rate=0.06, n_jobs=-1, )
+
+xg.fit(Xt, yt["OS_YEARS"], sample_weight=yt["OS_STATUS"])
+
+pred = xg.predict(Xv)
+
+print(concordance_index_ipcw(yt, yv, pred))
+
+pred = xg.predict(Xt)
+
+print(concordance_index_ipcw(yt, yt, pred))
+
+# %%
+
+import xgboost as xgb
+
+Xt, Xv, yt, yv = train_test_split(X_train, y_train, test_size=0.3, random_state=1)
+
+# y_train is your structured array of dtype [('status',bool),('time',float)]
+times  = yt['OS_YEARS']                # observed time or follow‐up time
+status = yt['OS_STATUS'].astype(int)  # 1=event (death), 0=censored
+
+# 1) Build lower‐ and upper‐bound arrays:
+y_lower = times.copy()
+#   – if event happened, upper bound = exact time
+#   – if censored, upper bound = +inf (or a very large number)
+y_upper = np.where(status==1,
+                   times,
+                   np.inf)
+
+# 2) Create a DMatrix with these bounds
+dtrain = xgb.DMatrix(Xt,
+                     label_lower_bound=y_lower,
+                     label_upper_bound=y_upper)
+
+# If you also want a validation split:
+times_val  = yv['OS_YEARS']
+status_val = yv['OS_STATUS'].astype(int)
+y_lower_val = times_val
+y_upper_val = np.where(status_val==1, times_val, np.inf)
+dval = xgb.DMatrix(Xv,
+                   label_lower_bound=y_lower_val,
+                   label_upper_bound=y_upper_val)
+
+# 3) Set up AFT parameters
+params = {
+    'objective': 'survival:aft',
+    'eval_metric': 'aft-nloglik',
+    'aft_loss_distribution':        'normal',  # or 'logistic', 'extreme'
+    'aft_loss_distribution_scale':  1.1,
+    'tree_method': 'gpu_hist',   # or 'gpu_hist' if you have a GPU
+    'learning_rate': 0.1
+}
+
+# 4) Train with xgb.train (sklearn wrapper doesn’t yet expose the lower/upper labels)
+bst = xgb.train(params,
+                dtrain,
+                num_boost_round=200,
+                evals=[(dval, 'validation')],
+                early_stopping_rounds=10,
+                verbose_eval=0)
+
+# 5) Predicting
+# bst.predict returns the model’s estimate of T(x) = log(Y) if you use a log‐link
+pred_log_time = bst.predict(dval)
+# If you want actual time estimates, take exp():
+pred_time = np.exp(pred_log_time)
+
+print(concordance_index_ipcw(yt, yv, pred_time))
+print(concordance_index_ipcw(yt, yv, 1/pred_time))
+print()
+
+pred_log_time = bst.predict(dtrain)
+# If you want actual time estimates, take exp():
+pred_time = np.exp(pred_log_time)
+
+print(concordance_index_ipcw(yt, yt, pred_time))
+print(concordance_index_ipcw(yt, yt, 1/pred_time))
 
 # %%
 
