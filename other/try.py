@@ -44,12 +44,12 @@ train_df.head(3)
 
 # %%
 
-train_df.loc[:, "BM_BLAST"] = np.log(train_df["BM_BLAST"]+1e-9)
+#train_df.loc[:, "BM_BLAST"] = np.log(train_df["BM_BLAST"]+1e-9)
 train_df.loc[:, "PLT"] = np.log(train_df["PLT"]+1e-9)
-train_df.loc[:, "WBC"] = np.log((train_df["WBC"]-0.15)+1e-9)
-train_df.loc[:, "ANC"] = np.log((train_df["ANC"]+1)*1e-9)
+train_df.loc[:, "WBC"] = np.log(train_df["WBC"]+1e-9)
+train_df.loc[:, "ANC"] = np.log(train_df["ANC"]+1e-9)
 train_df.loc[:, "MONOCYTES"] = np.log(train_df["MONOCYTES"]+1e-9)
-train_df.loc[:, "HB"] = np.log(train_df["HB"]+1e-9)
+#train_df.loc[:, "HB"] = np.log(train_df["HB"]+1e-9)
 
 #train_df.drop(columns=['BM_BLAST','WBC','ANC','MONOCYTES','HB','PLT'], inplace=True)
 #better results if WBC is dropped (only for aft_loss_distribution=extreme)
@@ -380,7 +380,8 @@ from sklearn.model_selection import cross_val_score
 
 # 1) Build a ridge‐penalized Cox (no random_state here)
 cox_ridge = CoxnetSurvivalAnalysis(
-    l1_ratio         = 0.01    # pure L2 penalty
+    l1_ratio = 0.01,
+    alpha_min_ratio=0.0005
 )
 
 # 2) Wrap it so its .score() returns the IPCW C-index
@@ -392,15 +393,16 @@ scores = cross_val_score(
     wrapped_cox,
     X_train,
     y_train,
-    cv=MaxTimeHoldoutKFold(n_splits=5, random_state=0),  # use your custom CV
+    cv=MaxTimeHoldoutKFold(n_splits=5, random_state=0),  
     n_jobs=-1
 )
 
 cox_ipcw = scores.mean()
 
+print(scores)
 print(f"Cox PH IPCW C-index: {cox_ipcw:.3f}")
-print(f"RSF (tuned) IPCW C-index: {rsf_grid.best_score_:.3f}")
-print(f"Gradient Boosting (tuned) IPCW C-index: {gb_grid.best_score_:.3f}")
+#print(f"RSF (tuned) IPCW C-index: {rsf_grid.best_score_:.3f}")
+#print(f"Gradient Boosting (tuned) IPCW C-index: {gb_grid.best_score_:.3f}")
 
 # %%
 
