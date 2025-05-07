@@ -44,6 +44,19 @@ train_df.head(3)
 
 # %%
 
+train_df.loc[:, "BM_BLAST"] = np.log(train_df["BM_BLAST"]+1e-9)
+train_df.loc[:, "PLT"] = np.log(train_df["PLT"]+1e-9)
+train_df.loc[:, "WBC"] = np.log((train_df["WBC"]-0.15)+1e-9)
+train_df.loc[:, "ANC"] = np.log((train_df["ANC"]+1)*1e-9)
+train_df.loc[:, "MONOCYTES"] = np.log(train_df["MONOCYTES"]+1e-9)
+train_df.loc[:, "HB"] = np.log(train_df["HB"]+1e-9)
+
+#train_df.drop(columns=['BM_BLAST','WBC','ANC','MONOCYTES','HB','PLT'], inplace=True)
+#better results if WBC is dropped (only for aft_loss_distribution=extreme)
+#train_df.drop(columns=['WBC'], inplace=True)
+
+# %%
+
 # Feature engineering for molecular data:
 # 1. Binary mutation indicators for each gene
 gene_mutations = molecular_train.groupby(['ID','GENE']).size().unstack(fill_value=0)
@@ -144,9 +157,7 @@ print("y_train[0]:", y_train[0])  # example of (event, time) structure
 
 count = pd.Series(data = np.sum((X_train != 0).astype(int), axis=0), index=X_train.columns)
 
-# %%
-
-X_train = X_train.loc[:, list(count > 30)]
+X_train = X_train.loc[:, list(count > 0)]
 
 # %%
 
@@ -222,8 +233,8 @@ print("Best RSF IPCW C-index:", rsf_grid.best_score_)
 # best params: loss="coxph", learning_rate=0.1, n_estimators=200
 # best score: 0.7060
 gb_param_grid = {
-    "estimator__max_features": [None, "log2", "sqrt"],
-    "estimator__dropout_rate": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    "estimator__max_features": [None, "log2", "sqrt"]
+    #"estimator__dropout_rate": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
     #"estimator__max_depth": [None, 10]
 }
 
@@ -293,26 +304,41 @@ dval = xgb.DMatrix(Xv,
                    label_upper_bound=y_upper_val)
 
 # 3) Set up AFT parameters
+'''
 params = {
     'objective': 'survival:aft',
     'eval_metric': 'aft-nloglik',
-    'aft_loss_distribution':        'normal',  # or 'logistic', 'extreme'
-    'aft_loss_distribution_scale':  1.1,
+    'aft_loss_distribution': "normal",  # or 'logistic', 'extreme'
+    'aft_loss_distribution_scale':  1.1, #1.1
     'tree_method': 'gpu_hist',   # or 'gpu_hist' if you have a GPU
     'learning_rate': 0.0901, #0.0901
     "max_depth": 6,
     "max_leaves":8,
     "max_bin": 10,
     "gamma": 0.7, #0.7
-    "importance_type": "total_cover"
 }
+
+'''
+params = {
+    'objective': 'survival:aft',
+    'eval_metric': 'aft-nloglik',
+    'aft_loss_distribution': "extreme",  # or 'logistic', 'extreme'
+    'aft_loss_distribution_scale':  1.0, #1.1
+    'tree_method': 'gpu_hist',   # or 'gpu_hist' if you have a GPU
+    'learning_rate': 0.0999, #0.0901
+    "max_depth": 6,
+    "max_leaves":8,
+    "max_bin": 10,
+    "gamma": 0.47, #0.7
+}
+
 
 # 4) Train with xgb.train (sklearn wrapper doesn’t yet expose the lower/upper labels)
 bst = xgb.train(params,
                 dtrain,
-                num_boost_round=1000,
+                num_boost_round=10000,
                 evals=[(dval, 'validation')],
-                early_stopping_rounds=50,
+                early_stopping_rounds=100,
                 verbose_eval=0)
 
 # 5) Predicting
@@ -336,10 +362,15 @@ print(concordance_index_ipcw(yt, yt, 1/pred_time))
 print()
 print(f"Best iteration: {bst.best_iteration}\nBest score: {bst.best_score:1.6}")
 
-best_score = 1.16106 #best score with learning rate=0.0901, gamma=0.7
+#best_score = 1.16106 #best score with learning rate=0.0901, gamma=0.7
+best_score = 1.15132
 
 print(f"New best score: {round(bst.best_score, 5) < best_score}")
 #print(f"{round(bst.best_score, 5)}, {best_score}")
+
+#with aft_loss_distribution=normal best parameters:
+#'aft_loss_distribution_scale'=1.0, learning_rate=0.0999, max_depth=6, gamma=0.47
+#best score: 1.15132
 
 # %%
 
