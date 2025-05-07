@@ -63,7 +63,7 @@ effects = (effects > 0).astype(int)
 
 # Merge gene mutation features into the main training DataFrame
 #train_df = train_df.set_index('ID').join(gene_mutations, how='left').join(mutation_count, how='left').join(effects, how="left").join(effects_survival, how="left")
-train_df = train_df.set_index('ID').join(gene_mutations, how='left').join(mutation_count, how="left")
+train_df = train_df.set_index('ID').join(mutation_count, how="left").join(gene_mutations, how='left').join(effects, how="left").join(effects_survival, how="left")
 train_df.fillna(0, inplace=True)  # fill missing gene indicators (patients with no mutations) with 0
 train_df.reset_index(inplace=True)
 
@@ -92,7 +92,7 @@ train_df['cyto_category'] = train_df['CYTOGENETICS'].apply(classify_cytogenetics
 train_df['cyto_normal'] = (train_df['cyto_category'] == 'normal').astype(int)
 train_df['cyto_complex'] = (train_df['cyto_category'] == 'complex').astype(int)
 # We can drop 'cyto_category' and let 'other abnormal' be implied when both flags are 0
-train_df.drop(columns=['cyto_category'], inplace=True)
+train_df = train_df.drop(columns=['cyto_category'])
 
 '''
 def classify_cytogenetics(cyto_str):
@@ -267,7 +267,7 @@ import xgboost as xgb
 Xt, Xv, yt, yv = train_test_split(X_train, y_train, test_size=0.3, random_state=1)
 
 # y_train is your structured array of dtype [('status',bool),('time',float)]
-times  = yt['OS_YEARS']                # observed time or follow‐up time
+times  = yt['OS_YEARS']               # observed time or follow‐up time
 status = yt['OS_STATUS'].astype(int)  # 1=event (death), 0=censored
 
 # 1) Build lower‐ and upper‐bound arrays:
@@ -299,18 +299,20 @@ params = {
     'aft_loss_distribution':        'normal',  # or 'logistic', 'extreme'
     'aft_loss_distribution_scale':  1.1,
     'tree_method': 'gpu_hist',   # or 'gpu_hist' if you have a GPU
-    'learning_rate': 0.09,
+    'learning_rate': 0.0901, #0.0901
     "max_depth": 6,
-    "max_leaves": 8,
-    "max_bin": 10
+    "max_leaves":8,
+    "max_bin": 10,
+    "gamma": 0.7, #0.7
+    "importance_type": "total_cover"
 }
 
 # 4) Train with xgb.train (sklearn wrapper doesn’t yet expose the lower/upper labels)
 bst = xgb.train(params,
                 dtrain,
-                num_boost_round=200,
+                num_boost_round=1000,
                 evals=[(dval, 'validation')],
-                early_stopping_rounds=10,
+                early_stopping_rounds=50,
                 verbose_eval=0)
 
 # 5) Predicting
@@ -319,6 +321,7 @@ pred_log_time = bst.predict(dval)
 # If you want actual time estimates, take exp():
 pred_time = np.exp(pred_log_time)
 
+print()
 print(concordance_index_ipcw(yt, yv, pred_time))
 print(concordance_index_ipcw(yt, yv, 1/pred_time))
 print()
@@ -329,6 +332,14 @@ pred_time = np.exp(pred_log_time)
 
 print(concordance_index_ipcw(yt, yt, pred_time))
 print(concordance_index_ipcw(yt, yt, 1/pred_time))
+
+print()
+print(f"Best iteration: {bst.best_iteration}\nBest score: {bst.best_score:1.6}")
+
+best_score = 1.16106 #best score with learning rate=0.0901, gamma=0.7
+
+print(f"New best score: {round(bst.best_score, 5) < best_score}")
+#print(f"{round(bst.best_score, 5)}, {best_score}")
 
 # %%
 
