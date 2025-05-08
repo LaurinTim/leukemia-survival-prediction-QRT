@@ -133,8 +133,6 @@ train_df['cyto_favorable'] = (train_df['cyto_category'] == 'favorable').astype(i
 train_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
 '''
 
-# %%
-
 # One-hot encode the Center category
 #train_df = pd.get_dummies(train_df, columns=['CENTER'], drop_first=True)
 train_df.drop(columns=["CENTER", "CYTOGENETICS"], inplace=True)
@@ -322,14 +320,14 @@ params = {
 params = {
     'objective': 'survival:aft',
     'eval_metric': 'aft-nloglik',
-    'aft_loss_distribution': "extreme",  # or 'logistic', 'extreme'
-    'aft_loss_distribution_scale':  1.0, #1.1
-    'tree_method': 'gpu_hist',   # or 'gpu_hist' if you have a GPU
-    'learning_rate': 0.0999, #0.0901
+    'aft_loss_distribution': "extreme",
+    'aft_loss_distribution_scale':  1.0,
+    'tree_method': 'gpu_hist',
+    'learning_rate': 0.0999,
     "max_depth": 6,
     "max_leaves":8,
     "max_bin": 10,
-    "gamma": 0.47, #0.7
+    "gamma": 0.47,
 }
 
 
@@ -374,6 +372,10 @@ print(f"New best score: {round(bst.best_score, 5) < best_score}")
 
 # %%
 
+
+
+# %%
+
 from sksurv.linear_model import CoxnetSurvivalAnalysis
 from sksurv.metrics      import as_concordance_index_ipcw_scorer
 from sklearn.model_selection import cross_val_score
@@ -399,16 +401,16 @@ scores = cross_val_score(
 
 cox_ipcw = scores.mean()
 
-print(scores)
+#print(scores)
 print(f"Cox PH IPCW C-index: {cox_ipcw:.3f}")
-#print(f"RSF (tuned) IPCW C-index: {rsf_grid.best_score_:.3f}")
-#print(f"Gradient Boosting (tuned) IPCW C-index: {gb_grid.best_score_:.3f}")
+print(f"RSF (tuned) IPCW C-index: {rsf_grid.best_score_:.3f}")
+print(f"Gradient Boosting (tuned) IPCW C-index: {gb_grid.best_score_:.3f}")
 
 # %%
 
 # Load test data
-clinical_test = pd.read_csv('clinical_test.csv')
-molecular_test = pd.read_csv('molecular_test.csv')
+clinical_test = pd.read_csv(clinical_file_test)
+molecular_test = pd.read_csv(molecular_file_test)
 
 # Aggregate molecular features for test
 gene_mutations_test = molecular_test.groupby(['ID','GENE']).size().unstack(fill_value=0)
@@ -416,42 +418,58 @@ gene_mutations_test = (gene_mutations_test > 0).astype(int)
 mutation_count_test = molecular_test.groupby('ID').size()
 mutation_count_test.name = "mutation_count"
 
+effects_survival_test = pd.DataFrame([list(molecular_test["ID"]), [effects_map.get(val) for val in molecular_test["EFFECT"]]], index=["ID", "EFFECTS_SURVIVAL"]).T
+effects_survival_test = effects_survival_test.groupby("ID")["EFFECTS_SURVIVAL"].mean()
+
+effects_test = molecular_test.groupby(["ID", "EFFECT"]).size().unstack(fill_value=0)
+effects_test = (effects_test > 0).astype(int)
+
 # Merge clinical and molecular for test
-test_df = clinical_test.set_index('ID').join(gene_mutations_test, how='left').join(mutation_count_test, how='left')
+test_df = clinical_test.set_index('ID').join(mutation_count_test, how='left').join(gene_mutations_test, how='left').join(effects_test, how='left').join(effects_survival_test, how='left')
+for col in numeric_cols:  # use numeric_cols from training step
+    test_df[col].fillna(train_df[col].median(), inplace=True)  # impute with training median
+    test_df['cyto_category'] = test_df['CYTOGENETICS'].apply(classify_cytogenetics)
 test_df.fillna(0, inplace=True)
 test_df.reset_index(inplace=True)
 
 # Apply same clinical feature processing:
-for col in numeric_cols:  # use numeric_cols from training step
-    test_df[col].fillna(train_df[col].median(), inplace=True)  # impute with training median
-test_df['cyto_category'] = test_df['CYTOGENETICS'].apply(classify_cytogenetics)
 test_df['cyto_normal'] = (test_df['cyto_category'] == 'normal').astype(int)
 test_df['cyto_complex'] = (test_df['cyto_category'] == 'complex').astype(int)
 test_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
 
+'''
 # One-hot encode center in test, aligning with training columns
 test_df = pd.get_dummies(test_df, columns=['CENTER'], drop_first=True)
 # Add any center dummy columns that were in training but not in test (set them to 0)
 for col in [c for c in X_train.columns if c.startswith('CENTER_')]:
     if col not in test_df.columns:
         test_df[col] = 0
+'''
 
 # Add any gene columns missing in test (set to 0)
 for gene in gene_mutations.columns:
     if gene not in test_df.columns:
         test_df[gene] = 0
+        
+for col in list(X_train.columns):
+    if not col in list(test_df.columns):
+        test_df.insert(0, col, np.zeros(len(test_df)))
 
 # Ensure test_df has the same feature columns as X_train
 X_test = test_df.set_index('ID')[X_train.columns]  # align columns by selecting in training order
 
 # %%
 
+#model = GradientBoostingSurvivalAnalysis(n_estimators=estimators, learning_rate=0.1, max_depth=3, max_features=None, random_state=0)
+#model.fit(X_train, y_train)
+
 # Train the final model on the full training data
-best_rsf = rsf_grid.best_estimator_   # RandomSurvivalForest with best params (already refit on full data by GridSearchCV)
+model = gb_grid.best_estimator_   # RandomSurvivalForest with best params (already refit on full data by GridSearchCV)
 # If needed (in case refit=False in GridSearchCV), we would do: best_rsf.fit(X_train, y_train)
 
 # Predict risk scores for test set
-risk_scores = best_rsf.predict(X_test)
+risk_scores = model.predict(X_test)
+#risk_scores = 1/risk_scores
 
 # Create output DataFrame
 output_df = pd.DataFrame({'ID': X_test.index, 'risk_score': risk_scores})
@@ -459,7 +477,34 @@ output_df.set_index('ID', inplace=True)
 output_df.to_csv(data_dir + "\\submission_files\\submissions2\\sub0.csv")
 print("Saved predictions.csv with columns ID and risk_score")
 
+# %%
 
+# Train the final model on the full training data
+# If needed (in case refit=False in GridSearchCV), we would do: best_rsf.fit(X_train, y_train)
+
+times_all = y_train['OS_YEARS']
+status_all = y_train['OS_STATUS'].astype(int)
+y_lower_all = times_all.copy()
+y_upper_all = np.where(status_all==1, times_all, np.inf)
+dtrain_all = xgb.DMatrix(X_train, label_lower_bound=y_lower_all, label_upper_bound=y_upper_all)
+
+model = xgb.train(params,
+                dtrain_all,
+                num_boost_round=10000,
+                evals=[(dval, 'validation')],
+                early_stopping_rounds=100,
+                verbose_eval=0)
+
+# Predict risk scores for test set
+dtest = xgb.DMatrix(X_test)
+risk_scores = model.predict(dtest)
+risk_scores = 1/risk_scores
+
+# Create output DataFrame
+output_df = pd.DataFrame({'ID': X_test.index, 'risk_score': risk_scores})
+output_df.set_index('ID', inplace=True)
+output_df.to_csv(data_dir + "\\submission_files\\submissions2\\sub2.csv")
+print("Saved predictions.csv with columns ID and risk_score")
 
 
 
