@@ -145,17 +145,27 @@ from sksurv.util import Surv
 
 # Separate features X and outcome y
 # Drop ID and outcome columns from features
-X_train = train_df.drop(columns=['ID','OS_YEARS','OS_STATUS'])
+X_data = train_df.drop(columns=['ID','OS_YEARS','OS_STATUS'])
 # Create structured array for survival outcome
-y_train = Surv.from_dataframe(event='OS_STATUS', time='OS_YEARS', data=train_df)
-print("X_train shape:", X_train.shape)
-print("y_train[0]:", y_train[0])  # example of (event, time) structure
+y_data = Surv.from_dataframe(event='OS_STATUS', time='OS_YEARS', data=train_df)
+print("X_data shape:", X_data.shape)
+print("y_data[0]:", y_data[0])  # example of (event, time) structure
 
 # %%
 
-count = pd.Series(data = np.sum((X_train != 0).astype(int), axis=0), index=X_train.columns)
+val_ids = pd.read_csv(data_dir + '\\Validation_IDs.csv')
 
-X_train = X_train.loc[:, list(count > 0)]
+X_train = X_data[[False if val in list(val_ids['ID']) else True for val in list(train_df['ID'])]]
+y_train = y_data[[False if val in list(val_ids['ID']) else True for val in list(train_df['ID'])]]
+
+X_val = X_data[[True if val in list(val_ids['ID']) else False for val in list(train_df['ID'])]]
+y_val = y_data[[True if val in list(val_ids['ID']) else False for val in list(train_df['ID'])]]
+
+# %%
+
+count = pd.Series(data = np.sum((X_data != 0).astype(int), axis=0), index=X_data.columns)
+
+X_data = X_data.loc[:, list(count > 0)]
 
 # %%
 
@@ -221,7 +231,7 @@ rsf_grid = GridSearchCV(
     verbose=3
 )
 
-rsf_grid.fit(X_train, y_train)
+rsf_grid.fit(X_data, y_data)
 print("Best RSF parameters:", rsf_grid.best_params_)
 print("Best RSF IPCW C-index:", rsf_grid.best_score_)
 
@@ -243,7 +253,7 @@ gb_grid = GridSearchCV(
     verbose=3
 )
 
-gb_grid.fit(X_train, y_train)
+gb_grid.fit(X_data, y_data)
 print("Best Gradient Boosting parameters:", gb_grid.best_params_)
 print("Best Gradient Boosting IPCW C-index:", gb_grid.best_score_)
 
@@ -253,7 +263,7 @@ from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split
 from sksurv.metrics import concordance_index_ipcw
 
-Xt, Xv, yt, yv = train_test_split(X_train, y_train, test_size=0.3, random_state=1)
+Xt, Xv, yt, yv = train_test_split(X_data, y_data, test_size=0.3, random_state=1)
 
 xg = XGBRegressor(objective="survival:cox", eval_metric="cox-nloglik", tree_mode="hist",
                   n_estimators=200, max_depth=4, max_leaves=20, max_bin=9, gamma=0.1, min_child_weight=23,
@@ -273,9 +283,9 @@ print(concordance_index_ipcw(yt, yt, pred))
 
 import xgboost as xgb
 
-Xt, Xv, yt, yv = train_test_split(X_train, y_train, test_size=0.3, random_state=1)
+Xt, Xv, yt, yv = train_test_split(X_data, y_data, test_size=0.3, random_state=1)
 
-# y_train is your structured array of dtype [('status',bool),('time',float)]
+# y_data is your structured array of dtype [('status',bool),('time',float)]
 times  = yt['OS_YEARS']               # observed time or follow‐up time
 status = yt['OS_STATUS'].astype(int)  # 1=event (death), 0=censored
 
@@ -357,22 +367,18 @@ pred_time = np.exp(pred_log_time)
 print(concordance_index_ipcw(yt, yt, pred_time))
 print(concordance_index_ipcw(yt, yt, 1/pred_time))
 
-print()
-print(f"Best iteration: {bst.best_iteration}\nBest score: {bst.best_score:1.6}")
+#print()
+#print(f"Best iteration: {bst.best_iteration}\nBest score: {bst.best_score:1.6}")
 
 #best_score = 1.16106 #best score with learning rate=0.0901, gamma=0.7
 best_score = 1.15132
 
-print(f"New best score: {round(bst.best_score, 5) < best_score}")
+#print(f"New best score: {round(bst.best_score, 5) < best_score}")
 #print(f"{round(bst.best_score, 5)}, {best_score}")
 
 #with aft_loss_distribution=normal best parameters:
 #'aft_loss_distribution_scale'=1.0, learning_rate=0.0999, max_depth=6, gamma=0.47
 #best score: 1.15132
-
-# %%
-
-
 
 # %%
 
@@ -393,8 +399,8 @@ wrapped_cox = as_concordance_index_ipcw_scorer(cox_ridge, tau=tau)
 # 3) Run cross‐validation without specifying scoring
 scores = cross_val_score(
     wrapped_cox,
-    X_train,
-    y_train,
+    X_data,
+    y_data,
     cv=MaxTimeHoldoutKFold(n_splits=5, random_state=0),  
     n_jobs=-1
 )
@@ -405,6 +411,52 @@ cox_ipcw = scores.mean()
 print(f"Cox PH IPCW C-index: {cox_ipcw:.3f}")
 print(f"RSF (tuned) IPCW C-index: {rsf_grid.best_score_:.3f}")
 print(f"Gradient Boosting (tuned) IPCW C-index: {gb_grid.best_score_:.3f}")
+
+# %%
+
+cox = CoxnetSurvivalAnalysis(l1_ratio = 0.01, alpha_min_ratio=0.0005)
+cox.fit(X_train, y_train)
+cox_pred = cox.predict(X_val)
+cox_ind = concordance_index_ipcw(y_train, y_val, cox_pred)[0]
+
+
+rsf = RandomSurvivalForest(n_estimators=estimators, min_samples_split=10, min_samples_leaf=3, max_features="sqrt", random_state=0)
+rsf.fit(X_train, y_train)
+rsf_pred = rsf.predict(X_val)
+rsf_ind = concordance_index_ipcw(y_train, y_val, rsf_pred)[0]
+
+gb = GradientBoostingSurvivalAnalysis(n_estimators=estimators, learning_rate=0.1, max_depth=3, max_features=None, random_state=0)
+gb.fit(X_train, y_train)
+gb_pred = gb.predict(X_val)
+gb_ind = concordance_index_ipcw(y_train, y_val, gb_pred)[0]
+
+times  = y_train['OS_YEARS']
+status = y_train['OS_STATUS'].astype(int)
+
+y_lower = times.copy()
+y_upper = np.where(status==1, times, np.inf)
+
+dtrain = xgb.DMatrix(X_train,
+                     label_lower_bound=y_lower,
+                     label_upper_bound=y_upper)
+
+times_val  = y_val['OS_YEARS']
+status_val = y_val['OS_STATUS'].astype(int)
+y_lower_val = times_val
+y_upper_val = np.where(status_val==1, times_val, np.inf)
+dval = xgb.DMatrix(X_val,
+                   label_lower_bound=y_lower_val,
+                   label_upper_bound=y_upper_val)
+
+xg = xgb.train(params, dtrain, num_boost_round=10000, evals=[(dval, 'validation')], early_stopping_rounds=100, verbose_eval=0)
+xg_pred = xg.predict(dval)
+xg_pred = 1/xg_pred
+xg_ind = concordance_index_ipcw(y_train, y_val, xg_pred)[0]
+
+print(f"COX: {cox_ind:1.5}")
+print(f"RSF: {rsf_ind:1.5}")
+print(f"GB:  {gb_ind:1.5}")
+print(f"XGB: {xg_ind:1.5}")
 
 # %%
 
@@ -441,7 +493,7 @@ test_df.drop(columns=['CYTOGENETICS','cyto_category'], inplace=True)
 # One-hot encode center in test, aligning with training columns
 test_df = pd.get_dummies(test_df, columns=['CENTER'], drop_first=True)
 # Add any center dummy columns that were in training but not in test (set them to 0)
-for col in [c for c in X_train.columns if c.startswith('CENTER_')]:
+for col in [c for c in X_data.columns if c.startswith('CENTER_')]:
     if col not in test_df.columns:
         test_df[col] = 0
 '''
@@ -451,21 +503,21 @@ for gene in gene_mutations.columns:
     if gene not in test_df.columns:
         test_df[gene] = 0
         
-for col in list(X_train.columns):
+for col in list(X_data.columns):
     if not col in list(test_df.columns):
         test_df.insert(0, col, np.zeros(len(test_df)))
 
-# Ensure test_df has the same feature columns as X_train
-X_test = test_df.set_index('ID')[X_train.columns]  # align columns by selecting in training order
+# Ensure test_df has the same feature columns as X_data
+X_test = test_df.set_index('ID')[X_data.columns]  # align columns by selecting in training order
 
 # %%
 
 #model = GradientBoostingSurvivalAnalysis(n_estimators=estimators, learning_rate=0.1, max_depth=3, max_features=None, random_state=0)
-#model.fit(X_train, y_train)
+#model.fit(X_data, y_data)
 
 # Train the final model on the full training data
 model = gb_grid.best_estimator_   # RandomSurvivalForest with best params (already refit on full data by GridSearchCV)
-# If needed (in case refit=False in GridSearchCV), we would do: best_rsf.fit(X_train, y_train)
+# If needed (in case refit=False in GridSearchCV), we would do: best_rsf.fit(X_data, y_data)
 
 # Predict risk scores for test set
 risk_scores = model.predict(X_test)
@@ -480,13 +532,13 @@ print("Saved predictions.csv with columns ID and risk_score")
 # %%
 
 # Train the final model on the full training data
-# If needed (in case refit=False in GridSearchCV), we would do: best_rsf.fit(X_train, y_train)
+# If needed (in case refit=False in GridSearchCV), we would do: best_rsf.fit(X_data, y_data)
 
-times_all = y_train['OS_YEARS']
-status_all = y_train['OS_STATUS'].astype(int)
+times_all = y_data['OS_YEARS']
+status_all = y_data['OS_STATUS'].astype(int)
 y_lower_all = times_all.copy()
 y_upper_all = np.where(status_all==1, times_all, np.inf)
-dtrain_all = xgb.DMatrix(X_train, label_lower_bound=y_lower_all, label_upper_bound=y_upper_all)
+dtrain_all = xgb.DMatrix(X_data, label_lower_bound=y_lower_all, label_upper_bound=y_upper_all)
 
 model = xgb.train(params,
                 dtrain_all,
