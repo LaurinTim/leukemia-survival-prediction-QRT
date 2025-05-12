@@ -721,6 +721,7 @@ class Dataset():
         X_sum = np.sum(self.X.astype(bool), axis=0)
         self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
                                                                                   ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
+        '''
         self.X.loc[:, "BM_BLAST"] = np.log(self.X["BM_BLAST"]+1e-9)
         self.X.loc[:, "PLT"] = np.log(self.X["PLT"]+1e-9)
         self.X.loc[:, "WBC"] = np.log((self.X["WBC"]-0.15)+1e-9)
@@ -730,7 +731,7 @@ class Dataset():
         self.X.loc[:, "VAF_MEDIAN"] = self.X["VAF_MEDIAN"]**0.5
         self.X.loc[:, "DEPTH_SUM"] = self.X["DEPTH_SUM"]**0.2
         self.X.loc[:, "DEPTH_MEDIAN"] = self.X["DEPTH_MEDIAN"]**0.2
-        
+        '''
         #remove columns corresponding to features from self.X which are present in less than min_occurences patients
         sparse_features = self.X.columns
         self.sparse_features = sparse_features[X_sum < min_occurences]
@@ -738,7 +739,7 @@ class Dataset():
         
         #get the submission data and patient ids
         self.X_sub, self.patient_ids_sub = self.submission_data(clinical_df_sub, molecular_df_sub)
-        
+        '''
         self.X_sub.loc[:, "BM_BLAST"] = np.log(self.X_sub["BM_BLAST"]+1e-9)
         self.X_sub.loc[:, "PLT"] = np.log(self.X_sub["PLT"]+1e-9)
         self.X_sub.loc[:, "WBC"] = np.log((self.X_sub["WBC"]-0.15)+1e-9)
@@ -748,7 +749,7 @@ class Dataset():
         self.X_sub.loc[:, "VAF_MEDIAN"] = self.X_sub["VAF_MEDIAN"]**0.5
         self.X_sub.loc[:, "DEPTH_SUM"] = self.X_sub["DEPTH_SUM"]**0.2
         self.X_sub.loc[:, "DEPTH_MEDIAN"] = self.X_sub["DEPTH_MEDIAN"]**0.2
-        
+        '''
         #repeat the search for the sparse features in the submission data
         #remove any columns from both the training and submission data that occur less than min_occurences/3 times in the submission data
         X_sum_sub = np.sum(np.array(self.X_sub).astype(bool), axis=0)
