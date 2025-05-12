@@ -102,6 +102,10 @@ X_train, X_val, y_train, y_val = sets(X, y)
 
 # %%
 
+X_tdf = pd.DataFrame(X_train, columns=X_df.columns)
+
+# %%
+
 # Compute feature importance scores
 scores = u.fit_and_score_features(X_train, y_train)
 
@@ -258,9 +262,73 @@ pt_sub = clf.predict(X_sub)
 submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
 submission_df.to_csv(data_dir + "\\submission_files\\rsff0.csv", index=False)
 
+# %%
 
+import xgboost as xgb
 
+# Prepare dataset with selected features
+X_df1 = X_df#[use_cols]
+X1 = np.array(X_df1)
 
+Xt, Xv, yt, yv = sets(X1, y, complete_train=False)
+
+# y_data is your structured array of dtype [('status',bool),('time',float)]
+times  = yt['time']               # observed time or follow‐up time
+status = yt['status'].astype(int)  # 1=event (death), 0=censored
+
+# 1) Build lower‐ and upper‐bound arrays:
+y_lower = times.copy()
+#   – if event happened, upper bound = exact time
+#   – if censored, upper bound = +inf (or a very large number)
+y_upper = np.where(status==1,
+                   times,
+                   np.inf)
+
+# 2) Create a DMatrix with these bounds
+dtrain = xgb.DMatrix(Xt,
+                     label_lower_bound=y_lower,
+                     label_upper_bound=y_upper)
+
+# If you also want a validation split:
+times_val  = yv['time']
+status_val = yv['status'].astype(int)
+y_lower_val = times_val
+y_upper_val = np.where(status_val==1, times_val, np.inf)
+dval = xgb.DMatrix(Xv,
+                   label_lower_bound=y_lower_val,
+                   label_upper_bound=y_upper_val)
+
+params = {
+    'objective': 'survival:aft',
+    'eval_metric': 'aft-nloglik',
+    'aft_loss_distribution': "normal",
+    'aft_loss_distribution_scale':  1.0,
+    'tree_method': 'gpu_hist',
+    'learning_rate': 0.1,
+    "max_depth": 20,
+    "max_leaves":20,
+    "max_bin": 10,
+    "gamma": 1,
+}
+
+# 4) Train with xgb.train (sklearn wrapper doesn’t yet expose the lower/upper labels)
+bst = xgb.train(params,
+                dtrain,
+                num_boost_round=10000,
+                evals=[(dval, 'validation')],
+                early_stopping_rounds=100,
+                verbose_eval=0)
+
+# 5) Predicting
+# bst.predict returns the model’s estimate of T(x) = log(Y) if you use a log‐link
+pred_log_time = bst.predict(dval)
+# If you want actual time estimates, take exp():
+pred_time = np.exp(pred_log_time)
+
+print()
+print(concordance_index_ipcw(yt, yv, pred_time))
+print(concordance_index_ipcw(yt, yv, 1/pred_time))
+print()
 
 
 
