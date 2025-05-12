@@ -324,7 +324,33 @@ params = {
     "max_depth": 5,
     "max_leaves": 3,
     "max_bin": 9,
-    "gamma": 0.1,
+    "gamma": 0.2,
+}
+
+params = {
+    'objective': 'survival:aft',
+    'eval_metric': 'aft-nloglik',
+    'aft_loss_distribution': "extreme",
+    'aft_loss_distribution_scale': 0.4,
+    'tree_method': 'gpu_hist',
+    'learning_rate': 0.1,
+    "max_depth": 5,
+    "max_leaves": 3,
+    "max_bin": 9,
+    "gamma": 2.0,
+}
+
+params = {
+    'objective': 'survival:aft',
+    'eval_metric': 'aft-nloglik',
+    'aft_loss_distribution': "logistic",
+    'aft_loss_distribution_scale': 0.5,
+    'tree_method': 'gpu_hist',
+    'learning_rate': 0.4,
+    "max_depth": 5,
+    "max_leaves": 3,
+    "max_bin": 9,
+    "gamma": 2,
 }
 
 # 4) Train with xgb.train (sklearn wrapper doesn’t yet expose the lower/upper labels)
