@@ -125,8 +125,8 @@ use_cols1 = [i for i in vals1.index if vals1.loc[i[0]].iloc[0,1] >= threshold]
 
 # %%
 
-for i in range(11):
-    i += 10
+for i in range(20):
+    i = i + 2
     
     print(f'max_leaf_nodes={i}:')
     
@@ -140,7 +140,7 @@ for i in range(11):
     
     # Train Random Survival Forest model
     #clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-    clf = RandomSurvivalForest(n_estimators=200, max_depth=7, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0, max_leaf_nodes=i)
+    clf = RandomSurvivalForest(n_estimators=200, max_depth=7, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0, max_leaf_nodes=13)
     clf.fit(X_train1, y_train1)
     #threshold = 0.5
     
@@ -173,6 +173,52 @@ for i in range(11):
     print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
     
     print()
+    
+# %%
+
+# Prepare dataset with selected features
+X_df1 = X_df[use_cols]
+X1 = np.array(X_df1)
+
+# Train-test split with selected features
+#X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
+X_train1, X_val1, y_train1, y_val1 = sets(X1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+
+# Train Random Survival Forest model
+#clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf = RandomSurvivalForest(n_estimators=200, max_depth=7, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0, max_leaf_nodes=13)
+clf.fit(X_train1, y_train1)
+#threshold = 0.5
+
+# Evaluate Random Survival Forest model
+pt = clf.predict(X_val1)
+ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], pt)[0]
+indp1 = concordance_index_ipcw(y_train1, y_val1, pt)[0]
+print(f"Training C-Index and IPCW C-Index:   {clf.score(X_train1, y_train1):0.4f}, {concordance_index_ipcw(y_train1, y_train1, clf.predict(X_train1))[0]:0.4f}")
+print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
+
+# %%
+
+# Prepare dataset with selected features
+X_df1 = X_df[use_cols1]
+X1 = np.array(X_df1)
+
+# Train-test split with selected features
+#X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
+X_train1, X_val1, y_train1, y_val1 = sets(X1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+
+# Train Random Survival Forest model
+#clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+#clf = RandomSurvivalForest(n_estimators=200, max_depth=None, min_samples_split=5, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf.fit(X_train1, y_train1)
+#threshold = 0.5
+
+# Evaluate Random Survival Forest model
+pt = clf.predict(X_val1)
+ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], pt)[0]
+indp1 = concordance_index_ipcw(y_train1, y_val1, pt)[0]
+print(f"Training C-Index and IPCW C-Index:   {clf.score(X_train1, y_train1):0.4f}, {concordance_index_ipcw(y_train1, y_train1, clf.predict(X_train1))[0]:0.4f}")
+print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
 
 # %%
 
@@ -211,3 +257,93 @@ X_sub = np.array(X_sub_df1)
 pt_sub = clf.predict(X_sub)
 submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
 submission_df.to_csv(data_dir + "\\submission_files\\rsff0.csv", index=False)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
