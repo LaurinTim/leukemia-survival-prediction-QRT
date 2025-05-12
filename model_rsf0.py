@@ -267,10 +267,10 @@ submission_df.to_csv(data_dir + "\\submission_files\\rsff0.csv", index=False)
 import xgboost as xgb
 
 # Prepare dataset with selected features
-X_df1 = X_df#[use_cols]
+X_df1 = X_df[use_cols1]
 X1 = np.array(X_df1)
 
-Xt, Xv, yt, yv = sets(X1, y, complete_train=False)
+Xt, Xv, yt, yv = sets(X1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # y_data is your structured array of dtype [('status',bool),('time',float)]
 times  = yt['time']               # observed time or follow‐up time
@@ -298,17 +298,33 @@ dval = xgb.DMatrix(Xv,
                    label_lower_bound=y_lower_val,
                    label_upper_bound=y_upper_val)
 
+#use_cols
+'''
 params = {
     'objective': 'survival:aft',
     'eval_metric': 'aft-nloglik',
     'aft_loss_distribution': "normal",
-    'aft_loss_distribution_scale':  1.0,
+    'aft_loss_distribution_scale': 1.0,
     'tree_method': 'gpu_hist',
-    'learning_rate': 0.1,
-    "max_depth": 20,
-    "max_leaves":20,
-    "max_bin": 10,
-    "gamma": 1,
+    'learning_rate': 0.09,
+    "max_depth": 5,
+    "max_leaves": 3,
+    "max_bin": 9,
+    "gamma": 0.1,
+}
+'''
+#use_cols1
+params = {
+    'objective': 'survival:aft',
+    'eval_metric': 'aft-nloglik',
+    'aft_loss_distribution': "normal",
+    'aft_loss_distribution_scale': 1.0,
+    'tree_method': 'gpu_hist',
+    'learning_rate': 0.09,
+    "max_depth": 5,
+    "max_leaves": 3,
+    "max_bin": 9,
+    "gamma": 0.1,
 }
 
 # 4) Train with xgb.train (sklearn wrapper doesn’t yet expose the lower/upper labels)
@@ -325,10 +341,15 @@ pred_log_time = bst.predict(dval)
 # If you want actual time estimates, take exp():
 pred_time = np.exp(pred_log_time)
 
-print()
 print(concordance_index_ipcw(yt, yv, pred_time))
 print(concordance_index_ipcw(yt, yv, 1/pred_time))
+
+pred_log_timet = bst.predict(dtrain)
+pred_timet = np.exp(pred_log_timet)
+
 print()
+print(concordance_index_ipcw(yt, yt, pred_timet))
+print(concordance_index_ipcw(yt, yt, 1/pred_timet))
 
 
 

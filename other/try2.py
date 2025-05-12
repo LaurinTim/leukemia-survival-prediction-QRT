@@ -153,13 +153,24 @@ print("y_data[0]:", y_data[0])  # example of (event, time) structure
 
 # %%
 
-val_ids = pd.read_csv(data_dir + '\\Validation_IDs.csv')
+def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
+    val_ids = pd.read_csv(data_dir + '\\' + validation_file)
+    
+    if complete_train:
+        X_train = X
+        y_train = y
+        X_val = X[[True if val in list(val_ids['ID']) else False for val in list(train_df['ID'])]]
+        y_val = y[[True if val in list(val_ids['ID']) else False for val in list(train_df['ID'])]]
+    
+    else:
+        X_train = X[[False if val in list(val_ids['ID']) else True for val in list(train_df['ID'])]]
+        y_train = y[[False if val in list(val_ids['ID']) else True for val in list(train_df['ID'])]]
+        X_val = X[[True if val in list(val_ids['ID']) else False for val in list(train_df['ID'])]]
+        y_val = y[[True if val in list(val_ids['ID']) else False for val in list(train_df['ID'])]]
+        
+    return X_train, X_val, y_train, y_val
 
-X_train = X_data[[False if val in list(val_ids['ID']) else True for val in list(train_df['ID'])]]
-y_train = y_data[[False if val in list(val_ids['ID']) else True for val in list(train_df['ID'])]]
-
-X_val = X_data[[True if val in list(val_ids['ID']) else False for val in list(train_df['ID'])]]
-y_val = y_data[[True if val in list(val_ids['ID']) else False for val in list(train_df['ID'])]]
+X_train, X_val, y_train, y_val = sets(X_data, y_data)
 
 # %%
 
@@ -283,7 +294,8 @@ print(concordance_index_ipcw(yt, yt, pred))
 
 import xgboost as xgb
 
-Xt, Xv, yt, yv = train_test_split(X_data, y_data, test_size=0.3, random_state=1)
+#Xt, Xv, yt, yv = train_test_split(X_data, y_data, test_size=0.3, random_state=1)
+Xt, Xv, yt, yv = sets(X_data, y_data, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # y_data is your structured array of dtype [('status',bool),('time',float)]
 times  = yt['OS_YEARS']               # observed time or follow‐up time
@@ -327,6 +339,7 @@ params = {
 }
 
 '''
+'''
 params = {
     'objective': 'survival:aft',
     'eval_metric': 'aft-nloglik',
@@ -334,6 +347,19 @@ params = {
     'aft_loss_distribution_scale':  1.0,
     'tree_method': 'gpu_hist',
     'learning_rate': 0.0999,
+    "max_depth": 6,
+    "max_leaves":8,
+    "max_bin": 10,
+    "gamma": 0.47,
+}
+'''
+params = {
+    'objective': 'survival:aft',
+    'eval_metric': 'aft-nloglik',
+    'aft_loss_distribution': "extreme",
+    'aft_loss_distribution_scale':  1.0,
+    'tree_method': 'gpu_hist',
+    'learning_rate': 0.1,
     "max_depth": 6,
     "max_leaves":8,
     "max_bin": 10,
