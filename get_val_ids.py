@@ -79,6 +79,9 @@ pca = PCA(n_components=50, random_state=42)
 X_train_pca = pca.fit_transform(X_train_scaled)
 X_test_pca = pca.transform(X_test_scaled)
 
+#X_train_pca = X_train_scaled
+#X_test_pca = X_test_scaled
+
 # Adversarial validation setup
 X_combined = np.vstack([X_train_pca, X_test_pca])
 y_combined = np.hstack([np.zeros(X_train_pca.shape[0]), np.ones(X_test_pca.shape[0])])
