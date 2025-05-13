@@ -4,6 +4,7 @@ from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score
+from tqdm import tqdm
 
 # Path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -62,12 +63,12 @@ a = u.Dataset(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_d
 X_train = a.X # shape (3173, 78)
 X_test = a.X_sub # shape (1193, 78)
 
-# %%
-
 # Align test and train features
 common_cols = X_train.columns.intersection(X_test.columns)
 X_train = X_train[common_cols]
 X_test = X_test[common_cols]
+
+# %%
 
 # Standardize and apply PCA
 scaler = StandardScaler()
@@ -92,4 +93,116 @@ selected_indices = np.where(probs >= threshold)[0]
 
 # Output selected validation set IDs
 selected_ids = pd.DataFrame(a.patient_ids[[selected_indices]].reshape(-1,1), columns=['ID'])
-selected_ids.to_csv(data_dir + '\\Validation_IDs_90.csv', index=False)
+#selected_ids.to_csv(data_dir + '\\Validation_IDs_90.csv', index=False)
+
+# %%
+
+prob_df = pd.DataFrame(np.zeros(X_train.shape), columns=X_train.columns)
+pca = PCA(n_components=1, random_state=42)
+scaler = StandardScaler()
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+
+for col in tqdm(X_train.columns, total=X_train.shape[1]):
+    curr_X_train = X_train[col].to_frame()
+    curr_X_test = X_test[col].to_frame()
+    
+    curr_train_scaled = scaler.fit_transform(curr_X_train)
+    curr_test_scaled = scaler.transform(curr_X_test)
+    
+    curr_train_pca = pca.fit_transform(curr_train_scaled)
+    curr_test_pca = pca.transform(curr_test_scaled)
+    
+    curr_X_combined = np.vstack([curr_train_pca, curr_test_pca])
+    curr_y_combined = np.hstack([np.zeros(curr_train_pca.shape[0]), np.ones(curr_test_pca.shape[0])])
+    
+    clf.fit(curr_X_combined, curr_y_combined)
+    curr_probs = clf.predict_proba(curr_X_combined[:curr_train_pca.shape[0]])[:, 1]
+    
+    prob_df[col] = curr_probs
+
+
+# %%
+
+percent_threshold = 95
+
+threshold = np.array([np.percentile(val, percent_threshold) for val in np.array(prob_df).T])
+
+threshold = pd.DataFrame(threshold, index=X_train.columns)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
