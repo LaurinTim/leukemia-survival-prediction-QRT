@@ -129,7 +129,7 @@ use_cols1 = [i for i in vals1.index if vals1.loc[i[0]].iloc[0,1] >= threshold]
 
 # %%
 
-for i in range(20):
+for i in range(1):
     i = i + 2
     
     print(f'max_leaf_nodes={i}:')
@@ -264,6 +264,13 @@ submission_df.to_csv(data_dir + "\\submission_files\\rsff0.csv", index=False)
 
 # %%
 
+# Select features based on a threshold
+threshold = 0.52
+use_cols = [i for i in vals.index if vals.loc[i[0]].iloc[0,1] >= threshold]
+use_cols1 = [i for i in vals1.index if vals1.loc[i[0]].iloc[0,1] >= threshold]
+
+# %%
+
 import xgboost as xgb
 
 # Prepare dataset with selected features
@@ -326,7 +333,7 @@ params = {
     "max_bin": 9,
     "gamma": 0.2,
 }
-
+'''
 params = {
     'objective': 'survival:aft',
     'eval_metric': 'aft-nloglik',
@@ -339,7 +346,8 @@ params = {
     "max_bin": 9,
     "gamma": 2.0,
 }
-
+'''
+'''
 params = {
     'objective': 'survival:aft',
     'eval_metric': 'aft-nloglik',
@@ -352,7 +360,7 @@ params = {
     "max_bin": 9,
     "gamma": 2,
 }
-
+'''
 # 4) Train with xgb.train (sklearn wrapper doesn’t yet expose the lower/upper labels)
 bst = xgb.train(params,
                 dtrain,
@@ -377,7 +385,14 @@ print()
 print(concordance_index_ipcw(yt, yt, pred_timet))
 print(concordance_index_ipcw(yt, yt, 1/pred_timet))
 
+# %%
 
+# Generate predictions for submission
+dsub = xgb.DMatrix(np.array(X_sub_df[use_cols1]))
+pt_sub = bst.predict(dsub)
+pt_sub = 1/pt_sub
+submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
+submission_df.to_csv(data_dir + "\\submission_files\\xgbw0.csv", index=False)
 
 
 
