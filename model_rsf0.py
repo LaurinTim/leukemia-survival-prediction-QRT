@@ -332,6 +332,7 @@ params = {
     "max_leaves": 3,
     "max_bin": 9,
     "gamma": 0.2,
+    "random_state": 0
 }
 '''
 params = {
