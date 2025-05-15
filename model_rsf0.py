@@ -189,8 +189,8 @@ X1 = np.array(X_df1)
 X_train1, X_val1, y_train1, y_val1 = sets(X1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # Train Random Survival Forest model
-#clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-clf = RandomSurvivalForest(n_estimators=200, max_depth=7, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0, max_leaf_nodes=13)
+clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+#clf = RandomSurvivalForest(n_estimators=200, max_depth=7, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0, max_leaf_nodes=13)
 clf.fit(X_train1, y_train1)
 #threshold = 0.5
 
@@ -231,13 +231,13 @@ X_df1 = X_df[use_cols]
 X1 = np.array(X_df1)
 
 # Train-test split with selected features
-#X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
 X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
+#X_train1, X_val1, y_train1, y_val1 = sets(X1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # Train Random Survival Forest model
-#clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-clf = RandomSurvivalForest(n_estimators=200, max_depth=None, min_samples_split=5, min_samples_leaf=3, n_jobs=-1, random_state=0)
-clf.fit(X_train1, y_train1)
+clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+#clf = RandomSurvivalForest(n_estimators=200, max_depth=None, min_samples_split=5, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf.fit(X1, y)
 #threshold = 0.5
 
 # Evaluate Random Survival Forest model
@@ -260,7 +260,7 @@ X_sub = np.array(X_sub_df1)
 # Generate predictions for submission
 pt_sub = clf.predict(X_sub)
 submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
-submission_df.to_csv(data_dir + "\\submission_files\\rsff0.csv", index=False)
+submission_df.to_csv(data_dir + "\\submission_files\\rsff1.csv", index=False)
 
 # %%
 
