@@ -125,6 +125,15 @@ use_cols1 = [i for i in vals.index if vals.loc[i[0]].iloc[0,1] >= threshold]
 
 # %%
 
+for i in ['VAF_SUM', 'VAF_MEDIAN', 'DEPTH_SUM', 'DEPTH_MEDIAN']:
+    if (i,) in use_cols:
+        use_cols.remove((i,))
+        
+    if (i,) in use_cols1:
+        use_cols1.remove((i,))
+
+# %%
+
 # Prepare dataset with selected features
 X_df1 = X_df[use_cols]
 X1 = np.array(X_df1)
