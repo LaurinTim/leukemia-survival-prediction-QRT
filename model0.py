@@ -82,6 +82,29 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
+def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
+    val_ids = pd.read_csv(data_dir + '\\' + validation_file)
+    
+    if complete_train:
+        X_train = X
+        y_train = y
+        X_val = X[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
+        y_val = y[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
+    
+    else:
+        X_train = X[[False if val in list(val_ids['ID']) else True for val in a.patient_ids]]
+        y_train = y[[False if val in list(val_ids['ID']) else True for val in a.patient_ids]]
+        X_val = X[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
+        y_val = y[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
+        
+    return X_train, X_val, y_train, y_val
+
+# Split dataset into training and validation sets
+#X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
+X_train, X_val, y_train, y_val = sets(X, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+
+# %%
+
 # Compute feature importance scores
 scores = u.fit_and_score_features(X_train, y_train)
 
@@ -93,6 +116,12 @@ vals = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Inde
 # Select features based on a threshold
 threshold = 0.52
 use_cols = [i for i in vals.index if vals.loc[i[0]].iloc[0,1] >= threshold]
+
+# %%
+
+# Select features based on a threshold
+threshold = 0.52
+use_cols1 = [i for i in vals.index if vals.loc[i[0]].iloc[0,1] >= threshold]
 
 # %%
 
@@ -115,9 +144,37 @@ print(ind1, indp1)
 
 # %%
 
+# Prepare dataset with selected features
+X_df1 = X_df[use_cols]
+X1 = np.array(X_df1)
+
+X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
+
 # Train Random Survival Forest model
 clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
 clf.fit(X_train1, y_train1)
+#clf.fit(X1, y)
+#threshold = 0.5
+
+# Evaluate Random Survival Forest model
+pt = clf.predict(X_val1)
+ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], pt)[0]
+indp1 = concordance_index_ipcw(y_train1, y_val1, pt)[0]
+print(f"Training C-Index and IPCW C-Index:   {clf.score(X_train1, y_train1):0.4f}, {concordance_index_ipcw(y_train1, y_train1, clf.predict(X_train1))[0]:0.4f}")
+print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
+
+# %%
+
+# Prepare dataset with selected features
+X_df1 = X_df[use_cols]
+X1 = np.array(X_df1)
+
+X_train1, X_val1, y_train1, y_val1 = sets(X1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+
+# Train Random Survival Forest model
+clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
+clf.fit(X_train1, y_train1)
+#clf.fit(X1, y)
 #threshold = 0.5
 
 # Evaluate Random Survival Forest model
@@ -140,4 +197,84 @@ X_sub = np.array(X_sub_df1)
 # Generate predictions for submission
 pt_sub = clf.predict(X_sub)
 submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
-submission_df.to_csv(data_dir + "\\submission_files\\rsf0.csv", index=False)
+submission_df.to_csv(data_dir + "\\submission_files\\rsff2.csv", index=False)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
