@@ -39,7 +39,7 @@ import os
 os.chdir(data_dir)
 
 # Import utility functions from model_rsf_utils
-import utils as u
+import other.utils as u
 
 # %%
 
