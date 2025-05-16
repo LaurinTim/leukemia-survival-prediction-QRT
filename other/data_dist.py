@@ -88,6 +88,40 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
+def hist(col, func=None, zero=True):
+    fig, ax = plt.subplots(figsize=(10,5))
+    
+    xh = np.array(X_df[column])
+    
+    xh_sub = np.array(X_sub_df[column])
+    
+    if not zero:
+        xh = xh[xh!=0]
+        xh_sub = xh_sub[xh_sub!=0]
+    
+    if func is None:
+        ax.hist(xh, bins=100, density=True)
+        ax.hist(xh_sub, bins=100, histtype="step", linewidth=2, density=True)
+        
+    else:
+        ax.hist(func(xh), bins=100, density=True)
+        ax.hist(func(xh_sub), bins=100, histtype="step", linewidth=2, density=True)
+    
+    ax.set_title(column + " hist")
+    
+    return
+
+# %%
+
+column = "MONOCYTES"
+
+#f = lambda x: np.log(x+1e-9)
+f = None
+
+hist(column, func=f, zero=True)
+
+# %%
+
 column = "DEPTH_SUM"
 
 fig, ax = plt.subplots(figsize=(10,5))
@@ -109,13 +143,17 @@ column = "BM_BLAST"
 
 fig, ax = plt.subplots(figsize=(10,5))
 
-xh = np.array(X_df[column][y["status"]==True])
+xh = np.array(X_df[column])
 xha = np.array(X_df[column])
+
+xh_sub = np.array(X_sub_df[column])
+xha_sub = np.array(X_sub_df[column])
 
 #xh[xh == 0] = sorted(set(xh))[1]
 #xh = xh[xh!=0]
 
 ax.hist(np.log(xh+1e-9), bins=100)
+ax.hist(np.log(xh_sub+1e-9), bins=100, histtype="step", linewidth=3)
 #ax.hist(xh, bins=100)
 ax.set_title(column + " hist")
 
