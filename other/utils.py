@@ -713,7 +713,8 @@ class Dataset():
         self.molecular_arr = np.array(self.molecular_df)
         
         #use Dataset.X as training data and Dataset.y as training target
-        self.X = np.zeros((self.patient_num, len(clinical_features)+2+len(cyto_markers)+self.molecular_df.shape[1]+1))
+        #self.X = np.zeros((self.patient_num, len(clinical_features)+2+2+len(cyto_markers)+self.molecular_df.shape[1]+1))
+        self.X = np.zeros((self.patient_num, len(clinical_features)+2+2+3+self.molecular_df.shape[1]+1))
         self.y = np.zeros((self.patient_num, 2))
         
         self.__getData()
@@ -834,7 +835,7 @@ class Dataset():
         status_item = (bool(curr_status[2]), curr_status[1])
         
         #get clinical_item which is part of item which gets returned
-        clinical_item = np.zeros(len(clinical_features) + 2 + 2 + len(cyto_markers))
+        clinical_item = np.zeros(len(clinical_features) + 2 + 2 + 3)
         clinical_item[0:len(clinical_features)] = curr_clinical[clinical_indices]
         clinical_item[len(clinical_features)] = 1 if curr_clinical[3] > 12 else 0
         clinical_item[len(clinical_features)+1] = 1 if curr_clinical[4] < 0.5 else 0
@@ -943,6 +944,8 @@ class Dataset():
             #median of the depths multiplied by the number of mutations
             molecular_item[10] = np.median(molecular_depth)*len(molecular_depth)
         
+        #print(clinical_item.shape, len(clinical_features)+7)
+        
         #combine the clinical and molecular item to get the item for the return
         item = np.append(clinical_item, molecular_item)
         
@@ -1040,7 +1043,7 @@ class Dataset():
         patient_ids_sub = np.array(clinical_df_sub.loc[:,"ID"])
         patient_num_sub = patient_ids_sub.shape[0]
         
-        X_sub = np.zeros((patient_num_sub, len(clinical_features)+2+len(cyto_markers)+self.molecular_df.shape[1]+1))
+        X_sub = np.zeros((patient_num_sub, len(clinical_features)+2+2+3+self.molecular_df.shape[1]+1))
         
         for i in range(patient_num_sub):
             curr_patient_id = patient_ids_sub[i]
@@ -1048,7 +1051,7 @@ class Dataset():
             curr_molecular = molecular_df_sub[molecular_df_sub["ID"] == curr_patient_id]
             X_sub[i] = self.__getItem_sub(np.array(curr_clinical)[0], np.array(curr_molecular))
             
-        X_sub = pd.DataFrame(X_sub, index=np.arange(patient_num_sub), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
+        X_sub = pd.DataFrame(X_sub, index=np.arange(patient_num_sub), columns=[clinical_features + ["WBC_l12", "ANC_s0.5"] + ["XX", "XY"] + ["CYTO_FAVORABLE", "CYTO_ADVERSE", "CYTO_NONE"] + 
                                                                                   ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
             
         X_sub = X_sub.drop(columns=self.sparse_features)
@@ -1073,7 +1076,7 @@ class Dataset():
         '''
         #prepare this the same way as in Dataset.__getItem
         curr_patient_id = curr_clinical[0]
-        clinical_item = np.zeros(len(clinical_features) + 2 + 2 + len(cyto_markers))
+        clinical_item = np.zeros(len(clinical_features) + 2 + 2 + 3)#len(cyto_markers))
         clinical_item[0:len(clinical_features)] = curr_clinical[clinical_indices]
         clinical_item[len(clinical_features)] = 1 if curr_clinical[3] > 12 else 0
         clinical_item[len(clinical_features)+1] = 1 if curr_clinical[4] < 0.5 else 0
