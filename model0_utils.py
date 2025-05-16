@@ -3,12 +3,12 @@
 import warnings
 warnings.filterwarnings("ignore")
 
-from lifelines import KaplanMeierFitter, CoxPHFitter
+from lifelines import KaplanMeierFitter
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from sksurv.linear_model import CoxPHSurvivalAnalysis, CoxnetSurvivalAnalysis
+from sksurv.linear_model import CoxPHSurvivalAnalysis
 from tqdm import tqdm
 import random
 from operator import itemgetter
@@ -17,10 +17,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OrdinalEncoder
 from sksurv.ensemble import RandomSurvivalForest
 from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
-
-from scipy.stats import logrank
-
-from time import time
 
 #path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -110,63 +106,7 @@ def status_to_StructuredArray(data):
     
     return arr
 
-def cox_score(X, y, model, x_val=None, y_val=None):
-    model.fit(X, y)
-    
-    if not x_val is None:
-        pred = model.predict(x_val)
-        ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
-        ci_ipcw = concordance_index_ipcw(y, y_val, pred)[0]
-        return ci, ci_ipcw
-    
-    pred = model.predict(X)
-    ci = concordance_index_censored(y["status"], y["time"], pred)[0]
-    ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
-    return ci, ci_ipcw
-    
-def regression_score(df, y, model, df_val=None, y_val=None):    
-    model.fit(df, duration_col="duration", event_col="status")
-    
-    if not df_val is None:
-        pred = model.predict_partial_hazard(df_val)
-        ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
-        ci_ipcw = concordance_index_ipcw(y, y_val, pred)[0]
-        return ci, ci_ipcw, model.summary.loc[list(df.columns)[2], "p"]
-    
-    pred = model.predict_partial_hazard(df)
-    ci = concordance_index_censored(y["status"], y["time"], pred)[0]
-    ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
-    return ci, ci_ipcw, model.summary.loc[list(df.columns)[2], "p"]
-    
-def skl_score(X, y, model, x_val=None, y_val=None):
-    model.fit(X, y)
-    
-    if not x_val is None:
-        pred = model.predict(x_val)
-        ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
-        ci_ipcw = concordance_index_ipcw(y, y_val, pred)[0]
-        return ci, ci_ipcw
-    
-    pred = model.predict(X)
-    ci = concordance_index_censored(y["status"], y["time"], pred)[0]
-    ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
-    return ci, ci_ipcw
-
-def lasso_score(X, y, model, x_val=None, y_val=None):
-    model.fit(X, y)
-    
-    if not x_val is None:
-        pred = model.predict(x_val)
-        ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
-        ci_ipcw = concordance_index_ipcw(y, y_val, pred)[0]
-        return ci, ci_ipcw
-    
-    pred = model.predict(X)
-    ci = concordance_index_censored(y["status"], y["time"], pred)[0]
-    ci_ipcw = concordance_index_ipcw(y, y, pred)[0]
-    return ci, ci_ipcw
-
-def fit_and_score_features(X_df, y):
+def fit_and_score_features(X, y):
     '''
 
     Parameters
@@ -184,255 +124,16 @@ def fit_and_score_features(X_df, y):
         each feature in X.
 
     '''
-    X = np.array(X_df)
     n_features = X.shape[1]
-    features = list(X_df.columns)
-    scores = np.zeros((n_features, 9))
-    
-    df = X_df.copy()
-    
-    df.insert(0, "duration", list(y["time"]))
-    df.insert(0, "status", list(y["status"]))
-        
-    rsf_model = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
-    #rsf_model = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-    #rsf_model = RandomSurvivalForest()
-    PH_model = CoxPHFitter(penalizer=0.5)
-    skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
-    lasso_model = CoxnetSurvivalAnalysis()
-    
-    #n_features=1
-    
+    scores = np.zeros((n_features, 2))
+    #m = CoxPHSurvivalAnalysis()
+    m = RandomSurvivalForest(n_estimators=5, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=1)
     for j in tqdm(range(n_features)):
         Xj = X[:, j : j + 1]
-        #Xj = np.concatenate((Xj, X[:, 0:1]), axis=1)
-        #Xj = X
-        cdf = df[["duration", "status", features[j]]]
-        #cdf = df
-        scores[j,0], scores[j,1] = cox_score(Xj, y, rsf_model)
-        scores[j,2], scores[j,3], scores[j,-1] = regression_score(cdf, y, PH_model)
-        scores[j,4], scores[j,5] = skl_score(Xj, y, skl_model)
-        scores[j,6], scores[j,7] = skl_score(Xj, y, lasso_model)
-                
+        m.fit(Xj, y)
+        scores[j,0] = m.score(Xj, y)
+        scores[j,1] = concordance_index_ipcw(y, y, m.predict(Xj))[0]
     return scores
-
-def fit_and_score_features2(X_df, y, random_state=1):
-    '''
-
-    Parameters
-    ----------
-    X : numpy.ndarray
-        Array containing the data used to train the model.
-    y : numpy.ndarray
-        Structured array where each element is a tuple of length 2 and type 
-        [(bool), (float)] containing the target for the training.
-
-    Returns
-    -------
-    scores : numpy.ndarray
-        Array (length=X.shape[1]) containing the concordance indices for 
-        each feature in X.
-
-    '''
-    X = np.array(X_df)
-    n_features = X.shape[1]
-    features = list(X_df.columns)
-    scores = np.zeros((n_features, 9))
-    
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=random_state)
-    
-    df_train = pd.DataFrame(X_train, columns=features)
-    df_val = pd.DataFrame(X_val, columns=features)
-    
-    df_train.insert(0, "duration", list(y_train["time"]))
-    df_train.insert(0, "status", list(y_train["status"]))
-    
-    df_val.insert(0, "duration", list(y_val["time"]))
-    df_val.insert(0, "status", list(y_val["status"]))
-        
-    rsf_model = RandomSurvivalForest(n_estimators=100, max_depth=10, min_samples_split=80, min_samples_leaf=10, n_jobs=-1, random_state=1)
-    #rsf_model = RandomSurvivalForest(n_estimators=1000, max_depth=50, min_samples_split=3, min_samples_leaf=1, n_jobs=-1, random_state=0)
-    #rsf_model = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-    #rsf_model = RandomSurvivalForest()
-    PH_model = CoxPHFitter(penalizer=0.01)
-    skl_model = CoxPHSurvivalAnalysis(n_iter=100, tol=1e-9)
-    lasso_model = CoxnetSurvivalAnalysis()
-    
-    #n_features=1
-    
-    for j in tqdm(range(n_features)):
-        Xj_train = X_train[:, j : j + 1]
-        Xj_val = X_val[:, j : j + 1]
-        #Xj_train = X_train
-        #Xj_val = X_val
-        
-        cdf_train = df_train[["duration", "status", features[j]]]
-        #cdf_train = df_train
-        cdf_val = df_val[["duration", "status", features[j]]]
-        #cdf_val = df_val
-        
-        scores[j,0], scores[j,1] = cox_score(Xj_train, y_train, rsf_model, x_val = Xj_val, y_val = y_val)
-        scores[j,2], scores[j,3], scores[j,-1] = regression_score(cdf_train, y_train, PH_model, df_val = cdf_val, y_val = y_val)
-        scores[j,4], scores[j,5] = skl_score(Xj_train, y_train, skl_model, x_val = Xj_val, y_val = y_val)
-        scores[j,6], scores[j,7] = skl_score(Xj_train, y_train, lasso_model, x_val = Xj_val, y_val = y_val)
-                
-    return scores
-
-def test_features(X_df, y, model, random_state=1):
-    '''
-
-    Parameters
-    ----------
-    X : numpy.ndarray
-        Array containing the data used to train the model.
-    y : numpy.ndarray
-        Structured array where each element is a tuple of length 2 and type 
-        [(bool), (float)] containing the target for the training.
-
-    Returns
-    -------
-    scores : numpy.ndarray
-        Array (length=X.shape[1]) containing the concordance indices for 
-        each feature in X.
-
-    '''
-    X = np.array(X_df)
-    n_features = X.shape[1]
-    features = np.array(X_df.columns)
-    features_pop = list(X_df.columns)
-    scores = np.zeros((n_features, n_features))
-    feature_elim = []
-    
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=random_state)
-    
-    for i in tqdm(range(n_features)):
-        curr_scores = np.zeros(n_features)
-        curr_max_feature = None
-        curr_max_score = 0
-        curr_max_pos = -1
-                
-        for j in range(len(features_pop)):
-            curr_feature = features_pop[j]
-            curr_X_train = np.copy(X_train)
-            curr_X_val = np.copy(X_val)
-            
-            if i < n_features-1:
-                curr_X_train = np.delete(curr_X_train, j, 1)
-                curr_X_val = np.delete(curr_X_val, j, 1)
-            
-            try:
-                model.fit(curr_X_train, y_train)
-            except:
-                print(f"model fit error ({i},{j})")
-                curr_score = scores[i-1][j]
-            else:
-                pred = model.predict(curr_X_val)
-                #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
-                curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
-                
-            curr_scores[np.argwhere(features==curr_feature)] = curr_score
-            
-            if curr_score > curr_max_score:
-                curr_max_score = curr_score
-                curr_max_feature = curr_feature
-                curr_max_pos = j
-                            
-        if curr_max_pos == -1:
-            print(f"curr_min_pos is {curr_max_pos}")
-               
-        features_pop.pop(curr_max_pos)
-        X_train = np.delete(X_train, curr_max_pos, 1)
-        X_val = np.delete(X_val, curr_max_pos, 1)
-        feature_elim.append(curr_max_feature)
-        scores[i] = curr_scores
-        
-    scores = pd.DataFrame(scores, columns=features)
-                
-    return scores, feature_elim
-
-def test_features2(X_df, y, model, random_state=1):
-    '''
-
-    Parameters
-    ----------
-    X : numpy.ndarray
-        Array containing the data used to train the model.
-    y : numpy.ndarray
-        Structured array where each element is a tuple of length 2 and type 
-        [(bool), (float)] containing the target for the training.
-
-    Returns
-    -------
-    scores : numpy.ndarray
-        Array (length=X.shape[1]) containing the concordance indices for 
-        each feature in X.
-
-    '''
-    X = np.array(X_df)
-    n_features = X.shape[1]
-    features = np.array(X_df.columns)
-    use_cols = list(X_df.columns)
-    scores = np.zeros((n_features, n_features))
-    feature_elim = []
-    best_features = []
-    best_score = 0
-    
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=random_state)
-    
-    for i in tqdm(range(n_features)):
-        curr_scores = np.zeros(n_features)
-        curr_max_feature = None
-        curr_max_score = 0
-        curr_max_pos = -1
-        
-        for j in range(n_features):
-            remove = False
-            curr_feature = features[j]
-            
-            if curr_feature in use_cols:
-                remove = True
-                curr_use_cols = [val for val in features if val in use_cols and not val==curr_feature]
-                if len(curr_use_cols)==0: curr_use_cols = [curr_feature]
-                
-            else:
-                curr_use_cols = [val for val in features if val in use_cols or val==curr_feature]
-                
-            curr_X_df = X_df[curr_use_cols]
-            curr_X = np.array(curr_X_df)
-            curr_X_train, curr_X_val, y_train, y_val = train_test_split(curr_X, y, test_size=0.3, random_state=random_state)
-            
-            try:
-                model.fit(curr_X_train, y_train)
-            except:
-                print(f"model fit error ({i},{j})")
-                curr_score = scores[i-1][j]
-            else:
-                pred = model.predict(curr_X_val)
-                #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
-                curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
-                
-            curr_scores[j] = curr_score
-            
-            if curr_score > curr_max_score and remove:
-                curr_max_score = curr_score
-                curr_max_feature = curr_feature
-                curr_max_pos = np.argwhere(np.array(use_cols)==curr_feature)[0,0]
-
-            if curr_score > best_score:
-                best_score = curr_score
-                best_features = curr_use_cols
-                
-        if curr_max_pos == -1:
-            print(f"curr_min_pos is {curr_max_pos}")
-                
-        use_cols.pop(curr_max_pos)
-        feature_elim.append(curr_max_feature)
-        scores[i] = curr_scores
-        
-        
-    scores = pd.DataFrame(scores, columns=features)
-                
-    return scores, feature_elim, best_score, best_features
 
 def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_train.csv', data_file_status=data_dir+'\\target_train.csv'):
     '''
@@ -680,7 +381,7 @@ class DatasetPrep():
         return clinical_df_sub, molecular_df_sub
         
 class Dataset():
-    def __init__(self, status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=5):
+    def __init__(self, status_df, clinical_df, molecular_df, min_occurences=5):
         '''
 
         Parameters
@@ -721,46 +422,11 @@ class Dataset():
         X_sum = np.sum(self.X.astype(bool), axis=0)
         self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
                                                                                   ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
-        '''
-        self.X.loc[:, "BM_BLAST"] = np.log(self.X["BM_BLAST"]+1e-9)
-        self.X.loc[:, "PLT"] = np.log(self.X["PLT"]+1e-9)
-        self.X.loc[:, "WBC"] = np.log((self.X["WBC"]-0.15)+1e-9)
-        self.X.loc[:, "ANC"] = np.log((self.X["ANC"]+1)*1e-9)
-        self.X.loc[:, "MONOCYTES"] = np.log(self.X["MONOCYTES"]+1e-9)
-        self.X.loc[:, "VAF_SUM"] = self.X["VAF_SUM"]**0.5
-        self.X.loc[:, "VAF_MEDIAN"] = self.X["VAF_MEDIAN"]**0.5
-        self.X.loc[:, "DEPTH_SUM"] = self.X["DEPTH_SUM"]**0.2
-        self.X.loc[:, "DEPTH_MEDIAN"] = self.X["DEPTH_MEDIAN"]**0.2
-        '''
+        
         #remove columns corresponding to features from self.X which are present in less than min_occurences patients
         sparse_features = self.X.columns
         self.sparse_features = sparse_features[X_sum < min_occurences]
         self.X = self.X.drop(columns=self.sparse_features)
-        
-        #get the submission data and patient ids
-        self.X_sub, self.patient_ids_sub = self.submission_data(clinical_df_sub, molecular_df_sub)
-        '''
-        self.X_sub.loc[:, "BM_BLAST"] = np.log(self.X_sub["BM_BLAST"]+1e-9)
-        self.X_sub.loc[:, "PLT"] = np.log(self.X_sub["PLT"]+1e-9)
-        self.X_sub.loc[:, "WBC"] = np.log((self.X_sub["WBC"]-0.15)+1e-9)
-        self.X_sub.loc[:, "ANC"] = np.log((self.X_sub["ANC"]+1)*1e-9)
-        self.X_sub.loc[:, "MONOCYTES"] = np.log(self.X_sub["MONOCYTES"]+1e-9)
-        self.X_sub.loc[:, "VAF_SUM"] = self.X_sub["VAF_SUM"]**0.5
-        self.X_sub.loc[:, "VAF_MEDIAN"] = self.X_sub["VAF_MEDIAN"]**0.5
-        self.X_sub.loc[:, "DEPTH_SUM"] = self.X_sub["DEPTH_SUM"]**0.2
-        self.X_sub.loc[:, "DEPTH_MEDIAN"] = self.X_sub["DEPTH_MEDIAN"]**0.2
-        '''
-        #repeat the search for the sparse features in the submission data
-        #remove any columns from both the training and submission data that occur less than min_occurences/3 times in the submission data
-        X_sum_sub = np.sum(np.array(self.X_sub).astype(bool), axis=0)
-        sparse_features_sub = self.X_sub.columns
-        self.sparse_features_sub = sparse_features_sub[X_sum_sub < min_occurences/3]
-        self.X_sub = self.X_sub.drop(columns=self.sparse_features_sub)
-        self.X = self.X.drop(columns=self.sparse_features_sub)
-        
-        #remove multiindex columns from X and X_sub
-        self.X.columns = ['_'.join(col) for col in self.X.columns]
-        self.X_sub.columns = ['_'.join(col) for col in self.X_sub.columns]
         
     def __getData(self) -> None:
         '''
@@ -768,18 +434,12 @@ class Dataset():
         Fill self.X and self.y with the transformed data.
 
         '''
-        self.pos=0
-        
         for idx in range(self.patient_num):
             curr_X_item, curr_y_item = self.__getItem(idx)
             self.X[idx] = curr_X_item
             self.y[idx] = curr_y_item
             
-            self.pos+=1
-            
         self.X = np.nan_to_num(self.X, nan=0)
-        
-        #self.X[:,len(clinical_features) + 2 + len(cyto_markers) + 3][self.X[:,len(clinical_features) + 2 + len(cyto_markers) + 3] == 0] = np.median(self.y[:,1][[True if val == 0 and bal == 1 else False for val,bal in zip(self.X[:,len(clinical_features) + 2 + len(cyto_markers) + 3], self.y[:,0])]])
         
     def __getItem(self, idx):
         '''
@@ -880,9 +540,6 @@ class Dataset():
         #if the current patient has no recorded somatic mutations, the molecular item is set to an array containing only zeros
         if len(curr_molecular)==0:
             molecular_item = np.zeros(self.molecular_df.shape[1]+1)
-            
-            #set MEDIAN_EFFECT_SURVIVAL to 2.8
-            #molecular_item[3] = np.median(np.array(self.status_df)[:,1][np.array(self.status_df)[:,2]==1])
         
         else:
             molecular_item = np.zeros((len(curr_molecular), len(curr_molecular[0])+1))
@@ -897,40 +554,21 @@ class Dataset():
             #number of mutations
             molecular_item[0] = len(curr_molecular)
             #average length of the mutations
-            #molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
             #median length of the mutations with length greater than 0
-            #molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
+            molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
             #if only mutations of length 0 are present set molecular_item[2] to 0
             if str(molecular_item[2]) == "nan":
                 molecular_item[2] = 0
                 
-            #take the mean over the expected median survival time of the different effects of the mutations
-            molecular_item[3] = np.mean(curr_molecular[:,7])#/len([val for val in curr_molecular[:,7] if val>0])
+            #sum over the expected median survival time of the different effects of the mutations
+            molecular_item[3] = np.sum(curr_molecular[:,7])
             
             #get the number of mutations from a substitution, deletion and insertion
             molecular_ref = curr_molecular[:,3]
             molecular_alt = curr_molecular[:,4]
-            
-            molecular_mutation_type = np.zeros(3)
-            molecular_lengths = []
-            molecular_lengths_median = []
-            for i in range(len(molecular_ref)):
-                temp_molecular_mutation_type, temp_mut_len = self.classify_mutation(molecular_ref[i], molecular_alt[i])
-                molecular_mutation_type += temp_molecular_mutation_type
-                molecular_lengths.append(temp_mut_len)
-                if temp_molecular_mutation_type[0]!=1:
-                    molecular_lengths_median.append(temp_mut_len)
-                
-            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
-            #molecular_item[2] = np.median([val for val in molecular_lengths_median if val>0])
-            if len(molecular_lengths_median)==0:
-                molecular_item[2] = 0
-            else:
-                molecular_item[2] = np.median(molecular_lengths_median)
-            
-            #molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
-            #molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
-            molecular_item[4:7] = molecular_mutation_type
+            molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
+            molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
             
             #vaf and depth of the mutations
             molecular_vaf = curr_molecular[:,8]
@@ -988,35 +626,25 @@ class Dataset():
         """
         
         res = np.zeros(3)
-        mut_len = 0
         
         if str(ref)=="nan" or str(alt)=="nan":
-            return res, mut_len
+            return res
         
         if len(ref) == len(alt):
             # Substitution
+            res[0] = 1
             if ref=="-":
                 res[2] = 1
-                mut_len = 1
-            elif alt=="-":
+            if alt=="-":
                 res[1] = 1
-                mut_len = 1
-            else:
-                res[0] = 1
-                mut_len = len(ref)
         elif len(ref) > len(alt):
             # Deletion: nucleotides removed
             res[1] = 1
-            mut_len = len(ref)
         else:
             # Insertion: extra nucleotides added
             res[2] = 1
-            mut_len = len(alt)
-            
-        if mut_len == 0 and (res[1]!=0 or res[2]!=0): print("AAAAAAA")
         
-        return res, mut_len
-    
+        return res
     
     def submission_data(self, clinical_df_sub, molecular_df_sub):
         '''
@@ -1098,41 +726,21 @@ class Dataset():
         else:
             molecular_item = np.zeros((len(curr_molecular), len(curr_molecular[0])+1))
             molecular_item[:,1] = curr_molecular[:,2]-curr_molecular[:,1]
-            #molecular_lengths = molecular_item[:,1]
+            molecular_lengths = molecular_item[:,1]
             molecular_item[:,11:] = curr_molecular[:,10:]
             molecular_item = np.sum(molecular_item, axis=0)
             
             molecular_item[0] = len(curr_molecular)
-            molecular_item[3] = np.mean(curr_molecular[:,7])
-            #molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
-            #molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
-            
+            molecular_item[3] = np.sum(curr_molecular[:,7])
+            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            molecular_item[2] = np.median([val for val in molecular_lengths if val>0])
             if str(molecular_item[2]) == "nan":
                 molecular_item[2] = 0
             
             molecular_ref = curr_molecular[:,3]
             molecular_alt = curr_molecular[:,4]
-            
-            molecular_mutation_type = np.zeros(3)
-            molecular_lengths = []
-            molecular_lengths_median = []
-            for i in range(len(molecular_ref)):
-                temp_molecular_mutation_type, temp_mut_len = self.classify_mutation(molecular_ref[i], molecular_alt[i])
-                molecular_mutation_type += temp_molecular_mutation_type
-                molecular_lengths.append(temp_mut_len)
-                if temp_molecular_mutation_type[0]!=1:
-                    molecular_lengths_median.append(temp_mut_len)
-                
-            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
-            #molecular_item[2] = np.median([val for val in molecular_lengths_median if val>0])
-            if len(molecular_lengths_median)==0:
-                molecular_item[2] = 0
-            else:
-                molecular_item[2] = np.median(molecular_lengths_median)
-                
-            #molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
-            #molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
-            molecular_item[4:7] = molecular_mutation_type
+            molecular_mutation_type = np.array([self.classify_mutation(val, bal) for val,bal in zip(molecular_ref, molecular_alt)])
+            molecular_item[4:7] = np.sum(molecular_mutation_type, axis=0)
             
             molecular_vaf = curr_molecular[:,8]
             molecular_depth = curr_molecular[:,9]
