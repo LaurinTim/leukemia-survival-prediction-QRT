@@ -123,15 +123,19 @@ train_model['OS_YEARS'] = train_model['OS_YEARS']+1e-5
 # %%
 
 # 11. Fit Cox model on training data
-cph = CoxPHFitter(baseline_estimation_method="breslow")
+cph = CoxPHFitter()
 cph.fit(train_model, duration_col='OS_YEARS', event_col='OS_STATUS')
-#cph.print_summary()  # optional: view coefficients and stats
+summary = cph.summary  # optional: view coefficients and stats
 
-# %%
+use_cols = [val for val,bal in zip(summary.index, summary['p']) if bal<=0.1]
 
-tst = train_model.drop(columns=['OS_YEARS', 'OS_STATUS'])
+tst = train_model[use_cols + ['OS_YEARS', 'OS_STATUS']]
 
-# %%
+cph.fit(tst, duration_col='OS_YEARS', event_col='OS_STATUS')
+summary_tst = cph.summary  # optional: view coefficients and stats
+
+tst = tst.drop(columns=['OS_YEARS', 'OS_STATUS'])
+#tst = train_model.drop(columns=['OS_YEARS', 'OS_STATUS'])
 
 pred = cph.predict_partial_hazard(tst)
 c = concordance_index_censored([bool(val) for val in train_model['OS_STATUS']], train_model['OS_YEARS'], pred)[0]
