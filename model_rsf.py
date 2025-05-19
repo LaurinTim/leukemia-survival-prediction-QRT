@@ -88,7 +88,7 @@ y = np.array([(bool(val[0]), float(val[1])) for val in y], dtype=[('status', boo
 # %%
 
 def sets(X, y):
-    val_ids = pd.read_csv(data_dir + '\\Validation_IDs.csv')
+    val_ids = pd.read_csv(data_dir + '\\val_ids\\Validation_IDs.csv')
     
     X_train = X[[False if val in list(val_ids['ID']) else True for val in a.patient_ids]]
     y_train = y[[False if val in list(val_ids['ID']) else True for val in a.patient_ids]]
