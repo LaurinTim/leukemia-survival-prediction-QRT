@@ -77,7 +77,7 @@ mol_test_agg = mol_test.groupby('ID').agg(
 ).reset_index()
 
 # 5. Create binary flags for top mutated genes
-top_genes = mol_train['GENE'].value_counts().head(15).index.tolist()
+top_genes = mol_train['GENE'].value_counts().head(110).index.tolist()
 genes = mol_train[mol_train['GENE'].isin(top_genes)]
 gene_flags = genes.assign(val=1).pivot_table(index='ID', columns='GENE', values='val', 
                                             aggfunc='sum', fill_value=0)
@@ -127,7 +127,7 @@ cph = CoxPHFitter()
 cph.fit(train_model, duration_col='OS_YEARS', event_col='OS_STATUS')
 summary = cph.summary  # optional: view coefficients and stats
 
-use_cols = [val for val,bal in zip(summary.index, summary['p']) if bal<=0.1]
+use_cols = [val for val,bal in zip(summary.index, summary['p']) if bal<=0.98]
 
 tst = train_model[use_cols + ['OS_YEARS', 'OS_STATUS']]
 
