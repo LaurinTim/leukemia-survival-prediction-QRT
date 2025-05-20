@@ -118,7 +118,7 @@ test_df.drop('CENTER', axis=1, inplace=True, errors='ignore')
 
 train_model = train_df.drop(columns=['ID'])
 
-train_model['OS_YEARS'] = train_model['OS_YEARS']+1e-5
+#train_model['OS_YEARS'] = train_model['OS_YEARS']+1e-5
 
 # %%
 
@@ -147,13 +147,19 @@ print(c, ci)
 
 # %%
 
-cft = CoxPHSurvivalAnalysis()
-cft.fit(train_model, yy)
 
-pred = cft.predict(tst)
+
+cft = CoxPHSurvivalAnalysis(verbose=2, alpha=99)
+cft.fit(np.array(tst), yy)
+
+pred = cft.predict(np.array(tst))
 c = concordance_index_censored([bool(val) for val in train_model['OS_STATUS']], train_model['OS_YEARS'], pred)[0]
 ci = concordance_index_ipcw(yy, yy, pred)[0]
 print(c, ci)
+
+# %%
+
+
 
 # %%
 
