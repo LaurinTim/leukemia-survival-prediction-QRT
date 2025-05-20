@@ -1,12 +1,12 @@
 import warnings
 warnings.filterwarnings("ignore")
 
-from lifelines import KaplanMeierFitter, CoxPHFitter
+from lifelines import CoxPHFitter
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from sksurv.linear_model import CoxPHSurvivalAnalysis, CoxnetSurvivalAnalysis
+from sksurv.linear_model import CoxPHSurvivalAnalysis
 from tqdm import tqdm
 import random
 from operator import itemgetter
@@ -127,6 +127,7 @@ cph = CoxPHFitter()
 cph.fit(train_model, duration_col='OS_YEARS', event_col='OS_STATUS')
 summary = cph.summary  # optional: view coefficients and stats
 
+'''
 use_cols = [val for val,bal in zip(summary.index, summary['p']) if bal<=0.98]
 
 tst = train_model[use_cols + ['OS_YEARS', 'OS_STATUS']]
@@ -135,7 +136,8 @@ cph.fit(tst, duration_col='OS_YEARS', event_col='OS_STATUS')
 summary_tst = cph.summary  # optional: view coefficients and stats
 
 tst = tst.drop(columns=['OS_YEARS', 'OS_STATUS'])
-#tst = train_model.drop(columns=['OS_YEARS', 'OS_STATUS'])
+'''
+tst = train_model.drop(columns=['OS_YEARS', 'OS_STATUS'])
 
 pred = cph.predict_partial_hazard(tst)
 c = concordance_index_censored([bool(val) for val in train_model['OS_STATUS']], train_model['OS_YEARS'], pred)[0]
@@ -145,14 +147,20 @@ print(c, ci)
 
 # %%
 
+cft = CoxPHSurvivalAnalysis()
+cft.fit(train_model, yy)
+
+pred = cft.predict(tst)
+c = concordance_index_censored([bool(val) for val in train_model['OS_STATUS']], train_model['OS_YEARS'], pred)[0]
+ci = concordance_index_ipcw(yy, yy, pred)[0]
+print(c, ci)
+
+# %%
+
 # 12. Predict risk scores for test set
 test_model = test_df.drop(columns=['ID'])
 risk_scores = cph.predict_partial_hazard(test_model).values.flatten()
 
-# %%
-
-import lifelines
-print(lifelines.__version__)
 
 
 
