@@ -77,7 +77,7 @@ mol_test_agg = mol_test.groupby('ID').agg(
 ).reset_index()
 
 # 5. Create binary flags for top mutated genes
-top_genes = mol_train['GENE'].value_counts().head(110).index.tolist()
+top_genes = mol_train['GENE'].value_counts().head(20).index.tolist()
 genes = mol_train[mol_train['GENE'].isin(top_genes)]
 gene_flags = genes.assign(val=1).pivot_table(index='ID', columns='GENE', values='val', 
                                             aggfunc='sum', fill_value=0)
@@ -147,19 +147,67 @@ print(c, ci)
 
 # %%
 
+v = []
+vi = []
 
+alphas = np.zeros(tst.shape[1])
 
-cft = CoxPHSurvivalAnalysis(verbose=2, alpha=99)
-cft.fit(np.array(tst), yy)
-
-pred = cft.predict(np.array(tst))
-c = concordance_index_censored([bool(val) for val in train_model['OS_STATUS']], train_model['OS_YEARS'], pred)[0]
-ci = concordance_index_ipcw(yy, yy, pred)[0]
-print(c, ci)
+for i in tqdm(range(tst.shape[1])):
+    alphas = np.zeros(tst.shape[1])
+    for j in range(10):
+        alphas[i] = j*10
+                
+        cft = CoxPHSurvivalAnalysis(alpha=alphas)
+        cft.fit(np.array(tst), yy)
+                
+        pred = cft.predict(np.array(tst))
+        c = concordance_index_censored([bool(val) for val in train_model['OS_STATUS']], train_model['OS_YEARS'], pred)[0]
+        ci = concordance_index_ipcw(yy, yy, pred)[0]
+                
+        v.append(c)
+        vi.append(ci)
 
 # %%
 
+v = []
+vi = []
 
+alphas = np.zeros(tst.shape[1])
+
+for i in tqdm(range(tst.shape[1])):
+    alphas = np.zeros(tst.shape[1])
+    
+    for k in range(2):
+        alphas[i] = 50*k
+        
+        for p in range(tst.shape[1]-1):
+            if p>=i: p += 1
+    
+            for j in range(1):
+                alphas[p] = p*0
+                
+                cft = CoxPHSurvivalAnalysis(alpha=alphas)
+                cft.fit(np.array(tst), yy)
+                
+                pred = cft.predict(np.array(tst))
+                c = concordance_index_censored([bool(val) for val in train_model['OS_STATUS']], train_model['OS_YEARS'], pred)[0]
+                ci = concordance_index_ipcw(yy, yy, pred)[0]
+                
+                v.append(c)
+                vi.append(ci)
+    
+#print(c, ci)
+
+# %%
+
+xx = np.linspace(0, len(v)-1, len(v))
+
+plt.figure()
+plt.scatter(xx, v)
+
+plt.figure()
+plt.scatter(xx, vi)
+#plt.xlim(0, 300)
 
 # %%
 
