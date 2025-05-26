@@ -125,6 +125,8 @@ def fit_and_score_features(X, y):
         each feature in X.
 
     '''
+    print(y['time'])
+    
     n_features = X.shape[1]
     scores = np.zeros((n_features, 2))
     #m = CoxPHSurvivalAnalysis()
@@ -162,19 +164,20 @@ def fit_and_score_features_cox(X, weights=None):
     features = [val for val in list(X.columns) if not val in ['duration', 'event', 'weight']]
     n_features = len(features)
     scores = np.zeros((n_features, 2))
-    y = np.array([(bool(val), float(val)) for val,bal in zip(np.array(X['event']), np.array(X['duration']))], dtype=[('status', bool), ('time', float)])
+    y = np.array([(bool(val), float(bal)) for val,bal in zip(np.array(X['event']), np.array(X['duration']))], dtype=[('status', bool), ('time', float)])
+    #print(concordance_index_censored(y['status'], y['time'], y['time'])[0])
     m = CoxPHFitter()
         
     for j in tqdm(range(n_features)):
         if has_weights:
             Xj = X[[features[j]] + ['duration', 'event', 'weight']]
             m.fit(Xj, duration_col='duration', event_col='event', weights_col='weight')
-            pred = m.predict_partial_hazard(X.drop(columns=['duration', 'event', 'weight']))
+            pred = np.array(m.predict_partial_hazard(X.drop(columns=['duration', 'event', 'weight'])))
         else:
             Xj = X[[features[j]] + ['duration', 'event']]
             m.fit(Xj, duration_col='duration', event_col='event')
-            pred = m.predict_partial_hazard(X.drop(columns=['duration', 'event']))
-            
+            pred = np.array(m.predict_partial_hazard(X.drop(columns=['duration', 'event'])))
+        
         scores[j,0] = concordance_index_censored(y['status'], y['time'], pred)[0]
         scores[j,1] = concordance_index_ipcw(y, y, pred)[0]
         
