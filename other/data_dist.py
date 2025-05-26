@@ -88,7 +88,7 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
-def hist(col, func=None, bins=100, zero=True):
+def hist(col, func=lambda x: x, bins=100, zero=True, density=True):
     fig, ax = plt.subplots(figsize=(10,5))
     
     xh = np.array(X_df[column])
@@ -98,30 +98,47 @@ def hist(col, func=None, bins=100, zero=True):
     if not zero:
         xh = xh[xh!=0]
         xh_sub = xh_sub[xh_sub!=0]
-    
-    if func is None:
-        ax.hist(xh, bins=bins, density=True, label='train')
-        ax.hist(xh_sub, bins=bins, histtype="step", linewidth=2, density=True, label='test')
         
-    else:
-        ax.hist(func(xh), bins=bins, density=True, label='train')
-        ax.hist(func(xh_sub), bins=bins, histtype="step", linewidth=2, density=True, label='test')
+    xh = func(xh)
+    xh_sub = func(xh_sub)
+        
+    min_data = min([min(xh), min(xh_sub)])
+    max_data = max([max(xh), max(xh_sub)])
+    bin_width = (max_data - min_data) / bins
+    bins_edges = [min_data + val * bin_width for val in range(bins+1)]
     
-    ax.set_ylabel(ylabel='Percentage of Patients in each bin', fontsize=12)
+    ax.hist(xh, bins=bins_edges, density=density, label='train')
+    ax.hist(xh_sub, bins=bins_edges, histtype="step", linewidth=2, density=density, label='test')
+    
+    #ax.hist(xh, bins=bins, density=density, label='train')
+    #ax.hist(xh_sub, bins=bins, histtype="step", linewidth=2, density=density, label='test')
+    
+    if density:
+        ax.set_ylabel(ylabel='Distribution of patient data', fontsize=12)
+    else:
+        ax.set_ylabel(ylabel='Patients in each bin', fontsize=12)
     ax.set_xlabel(xlabel=column, fontsize=12)
     ax.legend(loc='best', fontsize=12)
     ax.set_title(column + " hist", fontsize=14)
-    
+    #ax.set_xlim(0, 10)
+        
     return
 
 # %%
 
-column = "BM_BLAST"
+column = 'PLT'
 
-#f = lambda x: np.log(x+1e-9)
-f = None
+# For BM_BLAST (not very good):
+#f = lambda x: np.log1p(x)
+# For WBC:
+#f = lambda x: np.log(x+0.05)
+# For ANC:
+#f = lambda x: (x+0.1)**0.1
+# For PLT:
+f = lambda x: x**0.3
+#f = lambda x: x
 
-hist(column, func=f, bins=60, zero=False)
+hist(column, func=f, bins=30, zero=True, density=True)
 
 # %%
 
@@ -153,10 +170,36 @@ xh_sub = np.array(X_sub_df[column])
 xha_sub = np.array(X_sub_df[column])
 
 #xh[xh == 0] = sorted(set(xh))[1]
+#xh_sub[xh_sub == 0] = sorted(set(xh_sub))[1]
 #xh = xh[xh!=0]
+#xh_sub = xh_sub[xh_sub!=0]
 
-ax.hist(np.log(xh+1e-9), bins=100)
-ax.hist(np.log(xh_sub+1e-9), bins=100, histtype="step", linewidth=3)
+ax.hist(np.log1p(xh+1e-9), bins=20, density=True)
+ax.hist(np.log1p(xh_sub+1e-9), bins=20, histtype="step", linewidth=3, density=True)
+#ax.hist(xh, bins=100)
+ax.set_title(column + " hist")
+
+plt.show()
+
+# %%
+
+column = "HB"
+
+fig, ax = plt.subplots(figsize=(10,5))
+
+xh = np.array(X_df[column])
+xha = np.array(X_df[column])
+
+xh_sub = np.array(X_sub_df[column])
+xha_sub = np.array(X_sub_df[column])
+
+#xh[xh == 0] = sorted(set(xh))[1]
+#xh_sub[xh_sub == 0] = sorted(set(xh_sub))[1]
+#xh = xh[xh!=0]
+#xh_sub = xh_sub[xh_sub!=0]
+
+ax.hist(xh, bins=15, density=True)
+ax.hist(xh_sub, bins=15, histtype="step", linewidth=3, density=True)
 #ax.hist(xh, bins=100)
 ax.set_title(column + " hist")
 
