@@ -170,8 +170,7 @@ def fit_and_score_features_cox(X, drop_weights=False):
     n_features = len(features)
     scores = np.zeros((n_features, 2))
     y = np.array([(bool(val), float(bal)) for val,bal in zip(np.array(X['event']), np.array(X['duration']))], dtype=[('status', bool), ('time', float)])
-    #print(concordance_index_censored(y['status'], y['time'], y['time'])[0])
-    m = CoxPHFitter()
+    m = CoxPHFitter(penalizer=0.3)
         
     for j in tqdm(range(n_features)):
         if has_weights:

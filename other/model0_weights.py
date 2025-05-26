@@ -22,6 +22,8 @@ from sksurv.ensemble import RandomSurvivalForest
 from sklearn.neighbors import KernelDensity
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV
+from sklearn.preprocessing import PowerTransformer
+from lifelines import CoxPHFitter
 
 # Path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -75,30 +77,53 @@ a = u.Dataset(status_df, clinical_df, molecular_df, min_occurences=30)
 
 # Convert dataset into feature matrices
 X_data_df = a.X
+X_data_df.columns = [val[0] for val in list(X_data_df.columns)]
 y = a.y
 
 # Convert y into structured array
 y = np.array([(bool(val[0]), float(val[1])) for val in y], dtype=[('status', bool), ('time', float)])
 
+# Add duration and event columns to X_data_df
+X_data_df.insert(0, 'event', y['status'])
+X_data_df.insert(0, 'duration', y['time'])
+
 # Get data for the submission set
 clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 X_sub_df, patient_ids_sub = a.submission_data(clinical_df_sub, molecular_df_sub)
+X_sub_df.columns = [val[0] for val in list(X_sub_df.columns)]
 X_sub = np.array(X_sub_df)
 
+# Transform selected features to resemble a normal distribution
+'''
 for df in [X_data_df, X_sub_df]:
     df['BM_BLAST'] = np.log1p(np.array(df['BM_BLAST']))
     df['PLT'] = np.array(df['PLT'])**0.3
     df['WBC'] = np.log(np.array(df['WBC']) + 0.05)
     df['ANC'] = (np.array(df['ANC']) + 0.1)**0.1
     df['MONOCYTES'] = np.log((np.array(df['MONOCYTES']) + 0.1)**0.5)
+'''
 
-# Split dataset into training and validation sets
-X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
+yeo = PowerTransformer(method='yeo-johnson')
 
-X_data = np.array(X_data_df)
-X_train = np.array(X_train_df)
-X_val = np.array(X_val_df)
-X_sub = np.array(X_sub_df)
+# Transform BM_BLAST
+X_data_df['BM_BLAST'] = yeo.fit_transform(np.array(X_data_df['BM_BLAST']).reshape(-1,1)).flatten()
+X_sub_df['BM_BLAST'] = yeo.transform(np.array(X_sub_df['BM_BLAST']).reshape(-1,1)).flatten()
+
+# Transform PLT
+X_data_df['PLT'] = yeo.fit_transform(np.array(X_data_df['PLT']).reshape(-1,1)).flatten()
+X_sub_df['PLT'] = yeo.transform(np.array(X_sub_df['PLT']).reshape(-1,1)).flatten()
+
+# Transform WBC
+X_data_df['WBC'] = yeo.fit_transform(np.array(X_data_df['WBC']).reshape(-1,1)).flatten()
+X_sub_df['WBC'] = yeo.transform(np.array(X_sub_df['WBC']).reshape(-1,1)).flatten()
+
+# Transform ANC
+X_data_df['ANC'] = yeo.fit_transform(np.array(X_data_df['ANC']).reshape(-1,1)).flatten()
+X_sub_df['ANC'] = yeo.transform(np.array(X_sub_df['ANC']).reshape(-1,1)).flatten()
+
+# Transform MONOCYTES
+X_data_df['MONOCYTES'] = yeo.fit_transform(np.array(X_data_df['MONOCYTES']).reshape(-1,1)).flatten()
+X_sub_df['MONOCYTES'] = yeo.transform(np.array(X_sub_df['MONOCYTES']).reshape(-1,1)).flatten()
 
 # %% Function to get the weights for each sample depending on its distribution in selected features in the test and submission set
 
@@ -119,8 +144,8 @@ def get_weights(compare_columns):
     
     # Get the weights
     importance_weights = np.exp(log_p_sub - log_p_data)
-    #importance_weights = importance_weights/np.max(importance_weights)
-    importance_weights = np.array([np.sum(importance_weights <= val) for val in importance_weights])/len(importance_weights)
+    importance_weights = importance_weights/np.max(importance_weights)
+    #importance_weights = np.array([np.sum(importance_weights <= val) for val in importance_weights])/len(importance_weights)
     
     return importance_weights
     
@@ -129,6 +154,9 @@ def get_weights(compare_columns):
 # Columns with which the weights should be calculated
 #compare_columns = ['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES']
 compare_columns = ['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC']
+importance_weights = get_weights(compare_columns)
+
+'''
 w0 = get_weights(compare_columns)
 w1 = get_weights([val for val in compare_columns if not val=='BM_BLAST'])
 w2 = get_weights([val for val in compare_columns if not val=='HB'])
@@ -137,6 +165,20 @@ w4 = get_weights([val for val in compare_columns if not val=='WBC'])
 w5 = get_weights([val for val in compare_columns if not val=='ANC'])
 
 importance_weights = pd.DataFrame([w0, w1, w2, w3, w4, w5], index=['All', 'No BM_BLAST', 'No HB', 'No PLT', 'No WBC', 'No ANC']).T
+'''
+
+# Add weight column to X_data_df
+X_data_df.insert(0, 'weight', importance_weights)
+
+# %%
+
+# Split dataset into training and validation sets
+X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
+
+X_data = np.array(X_data_df.drop(columns=['duration', 'event', 'weight']))
+X_train = np.array(X_train_df.drop(columns=['duration', 'event', 'weight']))
+X_val = np.array(X_val_df.drop(columns=['duration', 'event', 'weight']))
+X_sub = np.array(X_sub_df)
 
 # %%
 
@@ -162,38 +204,100 @@ def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
 #X_train, X_val, y_train, y_val = sets(X, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # %%
+import other.model0_utils as u
 
 # Compute feature importance scores
-scores = u.fit_and_score_features(X_train, y_train)
+scores = u.fit_and_score_features_cox(X_train_df, drop_weights=True)
 
 # Rank features based on their importance
-vals = pd.DataFrame(scores, index=X_data_df.columns, columns=["C-Index", "IPCW C-Index"])
+vals = pd.DataFrame(scores, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
 
 # %%
 
 # Select features based on a threshold
 threshold = 0.52
-use_cols = [i for i in vals.index if vals.loc[i[0]].iloc[0,1] >= threshold]
+use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold]
+
+# %%
+
+# Compute feature importance scores
+scores = u.fit_and_score_features(X_train, y_train)
+
+# Rank features based on their importance
+vals1 = pd.DataFrame(scores, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
+
+# %%
+
+# Select features based on a threshold
+threshold = 0.52
+use_cols1 = [i for i in vals.index if vals1.loc[i].iloc[1] >= threshold]
 
 # %%
 
 # Prepare dataset with selected features
-X_data_df1 = X_data_df[use_cols]
-X1 = np.array(X_data_df1)
+X_data_df1 = X_data_df[use_cols + ['duration', 'event', 'weight']]
 
 # Train-test split with selected features
-X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
+X_train1, X_val1, y_train1, y_val1 = train_test_split(X_data_df1, y, test_size=0.3, random_state=1)
 
 # Train Cox Proportional Hazard model
-cox = CoxPHSurvivalAnalysis()
-cox.fit(X_train1, y_train1)
-#cox.fit(X1, y)
+cox = CoxPHFitter(penalizer=0.0)
+cox.fit(X_train1, duration_col='duration', event_col='event', weights_col='weight')
+#cox.fit(X_data_df1, duration_col='duration', event_col='event', weights_col='weight')
 
 # Evaluate Cox model
-preds1 = cox.predict(X_val1)
+preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event', 'weight']))
 ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], preds1)[0]
 indp1 = concordance_index_ipcw(y_train1, y_val1, preds1)[0]
 print(ind1, indp1)
+
+# %%
+
+# Prepare dataset with selected features
+X_data_df1 = X_data_df[use_cols + ['duration', 'event', 'weight']]
+
+# Train-test split with selected features
+X_train1, X_val1, y_train1, y_val1 = sets(X_data_df1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+
+# Train Cox Proportional Hazard model
+#cox = CoxPHFitter(penalizer=0.23)
+cox = CoxPHFitter(penalizer=0.23)
+cox.fit(X_train1, duration_col='duration', event_col='event', weights_col='weight')
+#cox.fit(X_train1.drop(columns=['weight']), duration_col='duration', event_col='event')
+#cox.fit(X_data_df1, duration_col='duration', event_col='event', weights_col='weight')
+
+# Evaluate Cox model
+preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event', 'weight']))
+ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], preds1)[0]
+indp1 = concordance_index_ipcw(y_train1, y_val1, preds1)[0]
+print(ind1, indp1)
+
+# %%
+
+# Prepare dataset with selected features
+X_data_df1 = X_data_df[use_cols + ['duration', 'event', 'weight']]
+
+# Train-test split with selected features
+X_train1, X_val1, y_train1, y_val1 = sets(X_data_df1, y, validation_file='Validation_IDs_90.csv', complete_train=True)
+
+# Train Cox Proportional Hazard model
+#cox = CoxPHFitter(penalizer=0.23)
+cox = CoxPHFitter(penalizer=0.23)
+#cox.fit(X_train1, duration_col='duration', event_col='event', weights_col='weight')
+cox.fit(X_train1.drop(columns=['weight']), duration_col='duration', event_col='event')
+
+# Evaluate Cox model
+preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event', 'weight']))
+ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], preds1)[0]
+indp1 = concordance_index_ipcw(y_train1, y_val1, preds1)[0]
+print(ind1, indp1)
+
+# %%
+
+# Generate predictions for submission
+pt_sub = cox.predict_partial_hazard(X_sub_df[use_cols])
+submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
+submission_df.to_csv(data_dir + "\\submission_files\\cox_weights_no0.csv", index=False)
 
 # %%
 
