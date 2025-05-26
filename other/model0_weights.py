@@ -86,37 +86,57 @@ X_sub_df, patient_ids_sub = a.submission_data(clinical_df_sub, molecular_df_sub)
 X_sub = np.array(X_sub_df)
 
 for df in [X_data_df, X_sub_df]:
-    for col in ['BM_BLAST','WBC','ANC','PLT']:
-        df[f'log_{col}'] = np.log1p(df[col])
-        df.drop(col, axis=1, inplace=True)
+    df['BM_BLAST'] = np.log1p(np.array(df['BM_BLAST']))
+    df['PLT'] = np.array(df['PLT'])**0.3
+    df['WBC'] = np.log(np.array(df['WBC']) + 0.05)
+    df['ANC'] = (np.array(df['ANC']) + 0.1)**0.1
+    df['MONOCYTES'] = np.log((np.array(df['MONOCYTES']) + 0.1)**0.5)
 
 # Split dataset into training and validation sets
 X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
 
+X_data = np.array(X_data_df)
 X_train = np.array(X_train_df)
 X_val = np.array(X_val_df)
+X_sub = np.array(X_sub_df)
 
-# %% Get the weights for each feaure depending on its distribution in the test and submission set
+# %% Function to get the weights for each sample depending on its distribution in selected features in the test and submission set
+
+def get_weights(compare_columns):
+    # Scale the train and submission data with a standard scaler
+    X_combined_df = pd.concat([X_data_df[compare_columns], X_sub_df[compare_columns]])
+    scaler = StandardScaler().fit(X_combined_df)
+    X_data_df_scaled = scaler.transform(X_data_df[compare_columns])
+    X_sub_df_scaled = scaler.transform(X_sub_df[compare_columns])
+    
+    # Fit KDEs (Kernel Density Estimation)
+    kde_data = KernelDensity(kernel='gaussian', bandwidth=1.0).fit(X_data_df_scaled)
+    kde_sub = KernelDensity(kernel='gaussian', bandwidth=1.0).fit(X_sub_df_scaled)
+    
+    # Get the logarithmic probability scores for the train and submission set
+    log_p_data = kde_data.score_samples(X_data_df_scaled) # shape: (3173,)
+    log_p_sub = kde_sub.score_samples(X_data_df_scaled) # shape: (3173,)
+    
+    # Get the weights
+    importance_weights = np.exp(log_p_sub - log_p_data)
+    #importance_weights = importance_weights/np.max(importance_weights)
+    importance_weights = np.array([np.sum(importance_weights <= val) for val in importance_weights])/len(importance_weights)
+    
+    return importance_weights
+    
+# %%
 
 # Columns with which the weights should be calculated
-compare_columns = ['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES']
+#compare_columns = ['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES']
+compare_columns = ['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC']
+w0 = get_weights(compare_columns)
+w1 = get_weights([val for val in compare_columns if not val=='BM_BLAST'])
+w2 = get_weights([val for val in compare_columns if not val=='HB'])
+w3 = get_weights([val for val in compare_columns if not val=='PLT'])
+w4 = get_weights([val for val in compare_columns if not val=='WBC'])
+w5 = get_weights([val for val in compare_columns if not val=='ANC'])
 
-# Scale the train and submission data with a standard scaler
-X_combined_df = pd.concat([X_data_df[compare_columns], X_sub_df[compare_columns]])
-scaler = StandardScaler().fit(X_combined_df)
-X_data_df_scaled = scaler.transform(X_data_df)
-X_sub_df_scaled = scaler.transform(X_sub_df)
-
-# Fit KDEs (Kernel Density Estimation)
-kde_data = KernelDensity(kernel='gaussian', bandwidth=1.0).fit(X_data_df_scaled)
-kde_sub = KernelDensity(kernel='gaussian', bandwidth=1.0).fit(X_sub_df_scaled)
-
-# Get the logarithmic probability scores for the train and submission set
-log_p_data = kde_data.score_samples(X_data_df_scaled) # shape: (3173,)
-log_p_sub = kde_sub.score_samples(X_data_df_scaled) # shape: (3173,)
-
-# Get the weights
-importance_weights = np.exp(log_p_sub - log_p_data)
+importance_weights = pd.DataFrame([w0, w1, w2, w3, w4, w5], index=['All', 'No BM_BLAST', 'No HB', 'No PLT', 'No WBC', 'No ANC']).T
 
 # %%
 
