@@ -83,7 +83,7 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 # %%
 
 def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
-    val_ids = pd.read_csv(data_dir + '\\' + validation_file)
+    val_ids = pd.read_csv(data_dir + '\\val_ids\\' + validation_file)
     
     if complete_train:
         X_train = X
@@ -144,6 +144,7 @@ X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, rand
 # Train Cox Proportional Hazard model
 cox = CoxPHSurvivalAnalysis()
 cox.fit(X_train1, y_train1)
+#cox.fit(X1, y)
 
 # Evaluate Cox model
 preds1 = cox.predict(X_val1)
@@ -182,8 +183,8 @@ X_train1, X_val1, y_train1, y_val1 = sets(X1, y, validation_file='Validation_IDs
 
 # Train Random Survival Forest model
 clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
-clf.fit(X_train1, y_train1)
-#clf.fit(X1, y)
+#clf.fit(X_train1, y_train1)
+clf.fit(X1, y)
 #threshold = 0.5
 
 # Evaluate Random Survival Forest model
