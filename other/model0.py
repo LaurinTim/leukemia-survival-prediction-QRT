@@ -207,7 +207,7 @@ X_sub = np.array(X_sub_df1)
 # Generate predictions for submission
 pt_sub = clf.predict(X_sub)
 submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
-submission_df.to_csv(data_dir + "\\submission_files\\rsff2.csv", index=False)
+#submission_df.to_csv(data_dir + "\\submission_files\\rsff2.csv", index=False)
 
 
 
