@@ -158,16 +158,16 @@ def fit_and_score_features_cox(X, weights=None):
     has_weights = False
     if 'weight' in list(X.columns):
         has_weights = True
-        
-    n_features = X.shape[1] - 2
+    
     features = [val for val in list(X.columns) if not val in ['duration', 'event', 'weight']]
+    n_features = len(features)
     scores = np.zeros((n_features, 2))
     y = np.array([(bool(val), float(val)) for val,bal in zip(np.array(X['event']), np.array(X['duration']))], dtype=[('status', bool), ('time', float)])
-    m = CoxPHFitter(penalizer=0.1)
+    m = CoxPHFitter()
         
     for j in tqdm(range(n_features)):
         if has_weights:
-            Xj = X[features[j] + ['duration', 'event', 'weight']]
+            Xj = X[[features[j]] + ['duration', 'event', 'weight']]
             m.fit(Xj, duration_col='duration', event_col='event', weights_col='weight')
             pred = m.predict_partial_hazard(X.drop(columns=['duration', 'event', 'weight']))
         else:
