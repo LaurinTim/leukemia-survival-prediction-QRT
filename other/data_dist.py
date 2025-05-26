@@ -136,9 +136,11 @@ column = 'PLT'
 #f = lambda x: (x+0.1)**0.1
 # For PLT:
 f = lambda x: x**0.3
+# For MONOCYTES:
+#f = lambda x: np.log((x+0.1)**0.5)
 #f = lambda x: x
 
-hist(column, func=f, bins=30, zero=True, density=True)
+hist(column, func=f, bins=50, zero=True, density=True)
 
 # %%
 
