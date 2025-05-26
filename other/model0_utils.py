@@ -124,9 +124,7 @@ def fit_and_score_features(X, y):
         Array (length=X.shape[1]) containing the concordance indices for 
         each feature in X.
 
-    '''
-    print(y['time'])
-    
+    '''    
     n_features = X.shape[1]
     scores = np.zeros((n_features, 2))
     #m = CoxPHSurvivalAnalysis()
