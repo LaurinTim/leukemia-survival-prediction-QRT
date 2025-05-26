@@ -19,6 +19,10 @@ from tqdm import tqdm
 from operator import itemgetter
 from sksurv.ensemble import RandomSurvivalForest
 
+from sklearn.neighbors import KernelDensity
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
+
 # Path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
 
@@ -70,15 +74,41 @@ molecular_df = d.molecular_df
 a = u.Dataset(status_df, clinical_df, molecular_df, min_occurences=30)
 
 # Convert dataset into feature matrices
-X_df = a.X
-X = np.array(X_df)
+X_data_df = a.X
 y = a.y
 
 # Convert y into structured array
 y = np.array([(bool(val[0]), float(val[1])) for val in y], dtype=[('status', bool), ('time', float)])
 
+# Get data for the submission set
+clinical_df_sub, molecular_df_sub = d.submission_data_prep()
+X_sub_df, patient_ids_sub = a.submission_data(clinical_df_sub, molecular_df_sub)
+X_sub = np.array(X_sub_df)
+
 # Split dataset into training and validation sets
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
+X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
+
+X_train = np.array(X_train_df)
+X_val = np.array(X_val_df)
+
+# %% Get the weights for each feaure depending on its distribution in the test and submission set
+
+# Scale the train and submission data with a standard scaler
+X_combined_df = pd.concat([X_data_df, X_sub_df])
+scaler = StandardScaler().fit(X_combined_df)
+X_data_df_scaled = scaler.transform(X_data_df)
+X_sub_df_scaled = scaler.transform(X_sub_df)
+
+# Fit KDEs (Kernel Density Estimation)
+kde_data = KernelDensity(kernel='gaussian', bandwidth=1.0).fit(X_data_df_scaled)
+kde_sub = KernelDensity(kernel='gaussian', bandwidth=1.0).fit(X_sub_df_scaled)
+
+# Get the logarithmic probability scores for the train and submission set
+log_p_data = kde_data.score_samples(X_data_df_scaled) # shape: (3173,)
+log_p_sub = kde_sub.score_samples(X_data_df_scaled) # shape: (3173,)
+
+# Get the weights
+importance_weights = np.exp(log_p_sub - log_p_data)
 
 # %%
 
@@ -101,7 +131,7 @@ def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
 
 # Split dataset into training and validation sets
 #X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
-X_train, X_val, y_train, y_val = sets(X, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+#X_train, X_val, y_train, y_val = sets(X, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # %%
 
@@ -109,7 +139,7 @@ X_train, X_val, y_train, y_val = sets(X, y, validation_file='Validation_IDs_90.c
 scores = u.fit_and_score_features(X_train, y_train)
 
 # Rank features based on their importance
-vals = pd.DataFrame(scores, index=X_df.columns, columns=["C-Index", "IPCW C-Index"])
+vals = pd.DataFrame(scores, index=X_data_df.columns, columns=["C-Index", "IPCW C-Index"])
 
 # %%
 
@@ -119,24 +149,9 @@ use_cols = [i for i in vals.index if vals.loc[i[0]].iloc[0,1] >= threshold]
 
 # %%
 
-# Select features based on a threshold
-threshold = 0.52
-use_cols1 = [i for i in vals.index if vals.loc[i[0]].iloc[0,1] >= threshold]
-
-# %%
-
-for i in ['VAF_SUM', 'VAF_MEDIAN', 'DEPTH_SUM', 'DEPTH_MEDIAN']:
-    if (i,) in use_cols:
-        use_cols.remove((i,))
-        
-    if (i,) in use_cols1:
-        use_cols1.remove((i,))
-
-# %%
-
 # Prepare dataset with selected features
-X_df1 = X_df[use_cols]
-X1 = np.array(X_df1)
+X_data_df1 = X_data_df[use_cols]
+X1 = np.array(X_data_df1)
 
 # Train-test split with selected features
 X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
@@ -155,8 +170,8 @@ print(ind1, indp1)
 # %%
 
 # Prepare dataset with selected features
-X_df1 = X_df[use_cols]
-X1 = np.array(X_df1)
+X_data_df1 = X_data_df[use_cols]
+X1 = np.array(X_data_df1)
 
 X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
 
@@ -176,8 +191,8 @@ print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
 # %%
 
 # Prepare dataset with selected features
-X_df1 = X_df[use_cols]
-X1 = np.array(X_df1)
+X_data_df1 = X_data_df[use_cols]
+X1 = np.array(X_data_df1)
 
 X_train1, X_val1, y_train1, y_val1 = sets(X1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
