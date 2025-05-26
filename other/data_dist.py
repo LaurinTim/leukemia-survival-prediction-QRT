@@ -88,7 +88,7 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
-def hist(col, func=None, zero=True):
+def hist(col, func=None, bins=100, zero=True):
     fig, ax = plt.subplots(figsize=(10,5))
     
     xh = np.array(X_df[column])
@@ -100,25 +100,28 @@ def hist(col, func=None, zero=True):
         xh_sub = xh_sub[xh_sub!=0]
     
     if func is None:
-        ax.hist(xh, bins=100, density=True)
-        ax.hist(xh_sub, bins=100, histtype="step", linewidth=2, density=True)
+        ax.hist(xh, bins=bins, density=True, label='train')
+        ax.hist(xh_sub, bins=bins, histtype="step", linewidth=2, density=True, label='test')
         
     else:
-        ax.hist(func(xh), bins=100, density=True)
-        ax.hist(func(xh_sub), bins=100, histtype="step", linewidth=2, density=True)
+        ax.hist(func(xh), bins=bins, density=True, label='train')
+        ax.hist(func(xh_sub), bins=bins, histtype="step", linewidth=2, density=True, label='test')
     
-    ax.set_title(column + " hist")
+    ax.set_ylabel(ylabel='Percentage of Patients in each bin', fontsize=12)
+    ax.set_xlabel(xlabel=column, fontsize=12)
+    ax.legend(loc='best', fontsize=12)
+    ax.set_title(column + " hist", fontsize=14)
     
     return
 
 # %%
 
-column = "MONOCYTES"
+column = "BM_BLAST"
 
 #f = lambda x: np.log(x+1e-9)
 f = None
 
-hist(column, func=f, zero=True)
+hist(column, func=f, bins=60, zero=False)
 
 # %%
 
