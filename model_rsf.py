@@ -84,16 +84,24 @@ X_sub = np.array(X_sub_df)
 y = np.array([(bool(val[0]), float(val[1])) for val in y], dtype=[('status', bool), ('time', float)])
 
 # Split dataset into training and validation sets
-#X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
 # %%
 
-def sets(X, y):
-    val_ids = pd.read_csv(data_dir + '\\val_ids\\Validation_IDs.csv')
+def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
+    val_ids = pd.read_csv(data_dir + '\\val_ids\\' + validation_file)
     
-    X_train = X[[False if val in list(val_ids['ID']) else True for val in a.patient_ids]]
-    y_train = y[[False if val in list(val_ids['ID']) else True for val in a.patient_ids]]
-    X_val = X[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
-    y_val = y[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
+    if complete_train:
+        X_train = X
+        y_train = y
+        X_val = X[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
+        y_val = y[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
+    
+    else:
+        X_train = X[[False if val in list(val_ids['ID']) else True for val in a.patient_ids]]
+        y_train = y[[False if val in list(val_ids['ID']) else True for val in a.patient_ids]]
+        X_val = X[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
+        y_val = y[[True if val in list(val_ids['ID']) else False for val in a.patient_ids]]
+        
     return X_train, X_val, y_train, y_val
 
 # %%
@@ -422,7 +430,7 @@ X1 = np.array(X_df1)
 
 # Train-test split with selected features
 #X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
-X_train1, X_val1, y_train1, y_val1 = sets(X1, y)
+X_train1, X_val1, y_train1, y_val1 = sets(X1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # Train Random Survival Forest model
 #clf = RandomSurvivalForest(n_estimators=200, max_depth=20, min_samples_split=10, min_samples_leaf=3, n_jobs=-1, random_state=0)
@@ -465,7 +473,7 @@ X_sub = np.array(X_sub_df1)
 # Generate predictions for the test set
 pt_sub = clf.predict(X_sub)
 submission_df1 = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
-submission_df1.to_csv(data_dir + "\\submission_files\\att1.csv", index=False)
+#submission_df1.to_csv(data_dir + "\\submission_files\\att1.csv", index=False)
 
 # %%
 
