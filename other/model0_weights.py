@@ -201,10 +201,9 @@ def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
 
 # Split dataset into training and validation sets
 #X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
-#X_train, X_val, y_train, y_val = sets(X, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+X_train_df, X_val_df, y_train, y_val = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # %%
-import other.model0_utils as u
 
 # Compute feature importance scores
 scores = u.fit_and_score_features_cox(X_train_df, drop_weights=True)
@@ -231,6 +230,15 @@ vals1 = pd.DataFrame(scores, index=[val for val in X_data_df.columns if not val 
 # Select features based on a threshold
 threshold = 0.52
 use_cols1 = [i for i in vals.index if vals1.loc[i].iloc[1] >= threshold]
+
+# %%
+
+for i in ['VAF_SUM', 'VAF_MEDIAN', 'DEPTH_SUM', 'DEPTH_MEDIAN']:
+    if i in use_cols:
+        use_cols.remove(i)
+        
+    if i in use_cols1:
+        use_cols1.remove(i)
 
 # %%
 
