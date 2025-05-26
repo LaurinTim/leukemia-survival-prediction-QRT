@@ -19,6 +19,7 @@ from tqdm import tqdm
 from operator import itemgetter
 from sksurv.ensemble import RandomSurvivalForest
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import PowerTransformer
 
 # Path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -88,7 +89,15 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 
 # %%
 
-def hist(col, func=lambda x: x, bins=100, zero=True, density=True):
+a = X_df['BM_BLAST']
+b = X_sub_df['BM_BLAST']
+
+a.to_csv(f'C:\\Users\\main\\Desktop\\test files\BM_BLAST_train.csv', index=False)
+b.to_csv(f'C:\\Users\\main\\Desktop\\test files\BM_BLAST_test.csv', index=False)
+
+# %%
+
+def hist0(col, func=lambda x: x, bins=100, zero=True, density=True):
     fig, ax = plt.subplots(figsize=(10,5))
     
     xh = np.array(X_df[column])
@@ -126,21 +135,68 @@ def hist(col, func=lambda x: x, bins=100, zero=True, density=True):
 
 # %%
 
-column = 'ANC'
+def hist(col, transformer=None, bins=100, zero=True, density=True):
+    fig, ax = plt.subplots(figsize=(10,5))
+    
+    xh = np.array(X_df[column])
+    
+    xh_sub = np.array(X_sub_df[column])
+    
+    if not zero:
+        xh = xh[xh!=0]
+        xh_sub = xh_sub[xh_sub!=0]
+        
+    if not transformer is None:
+        xh = transformer.fit_transform(xh.reshape(-1,1)).flatten()
+        xh_sub = transformer.transform(xh_sub.reshape(-1,1)).flatten()
+        
+    min_data = min([min(xh), min(xh_sub)])
+    max_data = max([max(xh), max(xh_sub)])
+    bin_width = (max_data - min_data) / bins
+    bins_edges = [min_data + val * bin_width for val in range(bins+1)]
+    
+    ax.hist(xh, bins=bins_edges, density=density, label='train')
+    ax.hist(xh_sub, bins=bins_edges, histtype="step", linewidth=2, density=density, label='test')
+    
+    #ax.hist(xh, bins=bins, density=density, label='train')
+    #ax.hist(xh_sub, bins=bins, histtype="step", linewidth=2, density=density, label='test')
+    
+    if density:
+        ax.set_ylabel(ylabel='Distribution of patient data', fontsize=12)
+    else:
+        ax.set_ylabel(ylabel='Patients in each bin', fontsize=12)
+    ax.set_xlabel(xlabel=column, fontsize=12)
+    ax.legend(loc='best', fontsize=12)
+    ax.set_title(column + " hist", fontsize=14)
+    #ax.set_xlim(0, 10)
+        
+    return
+
+# %%
+
+column = 'PLT'
 
 # For BM_BLAST (not very good):
 #f = lambda x: np.log1p(x)
 # For WBC:
 #f = lambda x: np.log(x+0.05)
 # For ANC:
-f = lambda x: (x+0.1)**0.1
+#f = lambda x: (x+0.1)**0.1
 # For PLT:
-#f = lambda x: x**0.3
+f = lambda x: x**0.3
 # For MONOCYTES:
 #f = lambda x: np.log((x+0.1)**0.5)
 #f = lambda x: x
 
-hist(column, func=f, bins=50, zero=True, density=True)
+hist0(column, func=f, bins=30, zero=True, density=True)
+
+# %%
+
+column = 'PLT'
+
+ph = PowerTransformer(method='yeo-johnson')
+
+hist(column, transformer=ph, bins=30, zero=True, density=True)
 
 # %%
 
