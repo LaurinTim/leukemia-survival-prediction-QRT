@@ -136,7 +136,7 @@ def fit_and_score_features(X, y):
         scores[j,1] = concordance_index_ipcw(y, y, m.predict(Xj))[0]
     return scores
 
-def fit_and_score_features_cox(X, weights=None):
+def fit_and_score_features_cox(X, drop_weights=False):
     '''
 
     Parameters
@@ -147,6 +147,10 @@ def fit_and_score_features_cox(X, weights=None):
         status of each sample. If sample weights should be considered during 
         scoring, X also needs to containg a 'weight' column that contains the 
         weight for the corresponding sample.
+    drop_weights : bool
+        If X has a 'weight' column and drop_weights is True, then this column 
+        is ignored and the scores are calculated without weights. The default 
+        if False.
 
     Returns
     -------
@@ -155,6 +159,9 @@ def fit_and_score_features_cox(X, weights=None):
         each feature in X.
 
     '''
+    if drop_weights:
+        X = X.drop(columns=['weight'])
+    
     has_weights = False
     if 'weight' in list(X.columns):
         has_weights = True
