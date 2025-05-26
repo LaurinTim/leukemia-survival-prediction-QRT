@@ -13,6 +13,7 @@ from tqdm import tqdm
 import random
 from operator import itemgetter
 from sklearn.model_selection import train_test_split
+from lifelines import CoxPHFitter
 
 from sklearn.preprocessing import OrdinalEncoder
 from sksurv.ensemble import RandomSurvivalForest
@@ -133,6 +134,50 @@ def fit_and_score_features(X, y):
         m.fit(Xj, y)
         scores[j,0] = m.score(Xj, y)
         scores[j,1] = concordance_index_ipcw(y, y, m.predict(Xj))[0]
+    return scores
+
+def fit_and_score_features_cox(X, weights=None):
+    '''
+
+    Parameters
+    ----------
+    X : DataFrame
+        Dataframe containing the data used to train the model as well as a 
+        'duration' and an 'event' column containing the durations and the 
+        status of each sample. If sample weights should be considered during 
+        scoring, X also needs to containg a 'weight' column that contains the 
+        weight for the corresponding sample.
+
+    Returns
+    -------
+    scores : numpy.ndarray
+        Array (length=X.shape[1]) containing the concordance indices for 
+        each feature in X.
+
+    '''
+    has_weights = False
+    if 'weight' in list(X.columns):
+        has_weights = True
+        
+    n_features = X.shape[1] - 2
+    features = [val for val in list(X.columns) if not val in ['duration', 'event', 'weight']]
+    scores = np.zeros((n_features, 2))
+    y = np.array([(bool(val), float(val)) for val,bal in zip(np.array(X['event']), np.array(X['duration']))], dtype=[('status', bool), ('time', float)])
+    m = CoxPHFitter(penalizer=0.1)
+        
+    for j in tqdm(range(n_features)):
+        if has_weights:
+            Xj = X[features[j] + ['duration', 'event', 'weight']]
+            m.fit(Xj, duration_col='duration', event_col='event', weights_col='weight')
+            pred = m.predict_partial_hazard(X.drop(columns=['duration', 'event', 'weight']))
+        else:
+            Xj = X[[features[j]] + ['duration', 'event']]
+            m.fit(Xj, duration_col='duration', event_col='event')
+            pred = m.predict_partial_hazard(X.drop(columns=['duration', 'event']))
+            
+        scores[j,0] = concordance_index_censored(y['status'], y['time'], pred)[0]
+        scores[j,1] = concordance_index_ipcw(y, y, pred)[0]
+        
     return scores
 
 def effect_to_survival_map(data_file_molecular=data_dir+'\\X_train\\molecular_train.csv', data_file_status=data_dir+'\\target_train.csv'):
