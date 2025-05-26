@@ -85,6 +85,11 @@ clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 X_sub_df, patient_ids_sub = a.submission_data(clinical_df_sub, molecular_df_sub)
 X_sub = np.array(X_sub_df)
 
+for df in [X_data_df, X_sub_df]:
+    for col in ['BM_BLAST','WBC','ANC','PLT']:
+        df[f'log_{col}'] = np.log1p(df[col])
+        df.drop(col, axis=1, inplace=True)
+
 # Split dataset into training and validation sets
 X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
 
@@ -93,8 +98,11 @@ X_val = np.array(X_val_df)
 
 # %% Get the weights for each feaure depending on its distribution in the test and submission set
 
+# Columns with which the weights should be calculated
+compare_columns = ['BM_BLAST', 'HB', 'PLT', 'WBC', 'ANC', 'MONOCYTES']
+
 # Scale the train and submission data with a standard scaler
-X_combined_df = pd.concat([X_data_df, X_sub_df])
+X_combined_df = pd.concat([X_data_df[compare_columns], X_sub_df[compare_columns]])
 scaler = StandardScaler().fit(X_combined_df)
 X_data_df_scaled = scaler.transform(X_data_df)
 X_sub_df_scaled = scaler.transform(X_sub_df)
