@@ -348,7 +348,7 @@ def scan_features(X_train, X_val, y_train, y_val, model=None, random_state=1):
 
     '''
     if model is None:
-        model = CoxPHFitter(penalizer=0.3)
+        model = CoxPHFitter(penalizer=0.1)
         
     if 'weight' in list(X_train.columns):
         X_train = X_train.drop(columns=['weight'])
@@ -359,7 +359,7 @@ def scan_features(X_train, X_val, y_train, y_val, model=None, random_state=1):
     features_pop = [val for val in list(X_train.columns) if not val in ['duration', 'event']]
     scores = np.zeros((n_features, n_features))
     feature_elim = []
-        
+            
     for i in tqdm(range(n_features)):
         curr_scores = np.zeros(n_features)
         curr_max_feature = None
@@ -370,13 +370,13 @@ def scan_features(X_train, X_val, y_train, y_val, model=None, random_state=1):
             curr_feature = features_pop[j]
             curr_X_train = X_train.copy()
             curr_X_val = X_val.copy()
-            
+                        
             if i < n_features-1:
                 curr_X_train = curr_X_train.drop(columns=[curr_feature])
                 curr_X_val = curr_X_val.drop(columns=[curr_feature])
             
             try:
-                model.fit(curr_X_train, y_train, duration_col='duration', event_col='event')
+                model.fit(curr_X_train, duration_col='duration', event_col='event')
             except:
                 print(f"model fit error ({i},{j})")
                 if i>0:
