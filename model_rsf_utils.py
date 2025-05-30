@@ -354,7 +354,7 @@ def scan_features(X_train, X_val, y_train, y_val, model=None, random_state=1):
         X_train = X_train.drop(columns=['weight'])
         X_val = X_val.drop(columns=['weight'])
     
-    features = [val for val in list(X_train.columns) if not val in ['duration', 'event']]
+    features = np.array([val for val in list(X_train.columns) if not val in ['duration', 'event']])
     n_features = len(features)
     features_pop = [val for val in list(X_train.columns) if not val in ['duration', 'event']]
     scores = np.zeros((n_features, n_features))
@@ -389,12 +389,12 @@ def scan_features(X_train, X_val, y_train, y_val, model=None, random_state=1):
                 curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
                 
             curr_scores[np.argwhere(features==curr_feature)] = curr_score
-            
+                        
             if curr_score > curr_max_score:
                 curr_max_score = curr_score
                 curr_max_feature = curr_feature
                 curr_max_pos = j
-                            
+                                        
         if curr_max_pos == -1:
             print(f"curr_min_pos is {curr_max_pos}")
                

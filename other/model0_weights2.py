@@ -46,8 +46,6 @@ os.chdir(data_dir)
 # Import utility functions from model_rsf_utils
 import model_rsf_utils as u
 
-# %%
-
 # Set random seed for reproducibility
 random_seed = 1
 u.set_random_seed(random_seed)
@@ -82,12 +80,8 @@ X_data_df = a.X
 X_data_df.columns = [val[0] for val in list(X_data_df.columns)]
 y = a.y
 
-# %%
-
 # Convert y into structured array
 y = np.array([(bool(val[0]), float(val[1])) for val in y], dtype=[('status', bool), ('time', float)])
-
-# %%
 
 # Add duration and event columns to X_data_df
 X_data_df.insert(0, 'event', y['status'])
@@ -180,16 +174,6 @@ X_data_df.insert(0, 'weight', importance_weights)
 
 # %%
 
-# Split dataset into training and validation sets
-X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
-
-X_data = np.array(X_data_df.drop(columns=['duration', 'event', 'weight']))
-X_train = np.array(X_train_df.drop(columns=['duration', 'event', 'weight']))
-X_val = np.array(X_val_df.drop(columns=['duration', 'event', 'weight']))
-X_sub = np.array(X_sub_df)
-
-# %%
-
 def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
     val_ids = pd.read_csv(data_dir + '\\val_ids\\' + validation_file)
     
@@ -209,6 +193,16 @@ def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
 
 # Split dataset into training and validation sets
 #X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
+
+# %%
+
+X_train0, X_val0, y_train0, y_val0 = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
+scan0, features_elim0 = u.scan_features(X_train0, X_val0, y_train0, y_val0)
+
+# %%
+
+X_train1, X_val1, y_train1, y_val1 = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+scan1, features_elim1 = u.scan_features(X_train1, X_val1, y_train1, y_val1)
 
 # %%
 
