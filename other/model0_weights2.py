@@ -209,9 +209,10 @@ def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
 
 # Split dataset into training and validation sets
 #X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=1)
-X_train_df, X_val_df, y_train, y_val = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # %%
+
+X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
 
 # Compute feature importance scores
 scores = u.fit_and_score_features_cox(X_train_df, drop_weights=True)
@@ -227,11 +228,13 @@ use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold]
 
 # %%
 
+X_train_df, X_val_df, y_train, y_val = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+
 # Compute feature importance scores
-scores = u.fit_and_score_features(X_train, y_train)
+scores1 = u.fit_and_score_features_cox(X_train_df, drop_weights=True)
 
 # Rank features based on their importance
-vals1 = pd.DataFrame(scores, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
+vals1 = pd.DataFrame(scores1, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
 
 # %%
 
@@ -247,6 +250,40 @@ for i in ['VAF_SUM', 'VAF_MEDIAN', 'DEPTH_SUM', 'DEPTH_MEDIAN']:
         
     if i in use_cols1:
         use_cols1.remove(i)
+        
+# %%
+
+def test_cox_split(X_train1, X_val1, y_train1, y_val1):
+    # Train Cox Proportional Hazard model
+    cox = CoxPHFitter(penalizer=0.0)
+    cox.fit(X_train1, duration_col='duration', event_col='event', weights_col='weight')
+    #cox.fit(X_data_df1, duration_col='duration', event_col='event', weights_col='weight')
+
+    # Evaluate Cox model
+    preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event', 'weight']))
+    ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], preds1)[0]
+    indp1 = concordance_index_ipcw(y_train1, y_val1, preds1)[0]
+    return ind1, indp1
+    
+
+def test_cox(use_cols, random_state=1):
+    # Prepare dataset with selected features
+    X_data_df1 = X_data_df[use_cols + ['duration', 'event', 'weight']]
+    
+    X_train1, X_val1, y_train1, y_val1 = train_test_split(X_data_df1, y, test_size=0.3, random_state=random_state)
+    ind10, indp10 = test_cox_split(X_train1, X_val1, y_train1, y_val1)
+    
+    X_train1, X_val1, y_train1, y_val1 = sets(X_data_df1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+    ind11, indp11 = test_cox_split(X_train1, X_val1, y_train1, y_val1)
+
+    print(ind10, indp10)
+    print(ind11, indp11)
+    
+# %%
+
+test_cox(use_cols)
+print()
+test_cox(use_cols1)
 
 # %%
 
