@@ -261,7 +261,7 @@ vals1 = pd.DataFrame(scores1, index=[val for val in X_data_df.columns if not val
 # %%
 
 # Select features based on a threshold
-threshold = 0.51
+threshold = 0.525
 use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold]
 
 # %%
