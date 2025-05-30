@@ -212,50 +212,9 @@ def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
 
 # %%
 
-X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
-
-# Compute feature importance scores
-scores = u.fit_and_score_features_cox(X_train_df, drop_weights=True)
-
-# Rank features based on their importance
-vals = pd.DataFrame(scores, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
-
-# %%
-
-# Select features based on a threshold
-threshold = 0.52
-use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold]
-
-# %%
-
-X_train_df, X_val_df, y_train, y_val = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
-
-# Compute feature importance scores
-scores1 = u.fit_and_score_features_cox(X_train_df, drop_weights=True)
-
-# Rank features based on their importance
-vals1 = pd.DataFrame(scores1, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
-
-# %%
-
-# Select features based on a threshold
-threshold = 0.52
-use_cols1 = [i for i in vals1.index if vals1.loc[i].iloc[1] >= threshold]
-
-# %%
-
-for i in ['VAF_SUM', 'VAF_MEDIAN', 'DEPTH_SUM', 'DEPTH_MEDIAN']:
-    if i in use_cols:
-        use_cols.remove(i)
-        
-    if i in use_cols1:
-        use_cols1.remove(i)
-        
-# %%
-
 def test_cox_split(X_train1, X_val1, y_train1, y_val1):
     # Train Cox Proportional Hazard model
-    cox = CoxPHFitter(penalizer=0.0)
+    cox = CoxPHFitter(penalizer=0.00001)
     cox.fit(X_train1, duration_col='duration', event_col='event', weights_col='weight')
     #cox.fit(X_data_df1, duration_col='duration', event_col='event', weights_col='weight')
 
@@ -278,12 +237,72 @@ def test_cox(use_cols, random_state=1):
 
     print(ind10, indp10)
     print(ind11, indp11)
+
+# %%
+
+X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
+
+# Compute feature importance scores
+scores = u.fit_and_score_features_cox(X_train_df, drop_weights=True)
+
+# Rank features based on their importance
+vals = pd.DataFrame(scores, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
+
+# %%
+
+X_train_df, X_val_df, y_train, y_val = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+
+# Compute feature importance scores
+scores1 = u.fit_and_score_features_cox(X_train_df, drop_weights=True)
+
+# Rank features based on their importance
+vals1 = pd.DataFrame(scores1, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
+
+# %%
+
+# Select features based on a threshold
+threshold = 0.51
+use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold]
+
+# %%
+
+# Select features based on a threshold
+#threshold = 0.515
+use_cols1 = [i for i in vals1.index if vals1.loc[i].iloc[1] >= threshold]
     
 # %%
 
 test_cox(use_cols)
 print()
 test_cox(use_cols1)
+    
+# %%
+
+use_cols2 = [val for val in use_cols if val in use_cols1]
+
+print('With common features of use_cols and use_cols1:')
+test_cox(use_cols2)
+print()
+
+for i in [val for val in use_cols if not val in use_cols1]:
+    curr_cols = use_cols2 + [i]
+    print(f'Added feature: {i}')
+    test_cox(curr_cols)
+    print()
+    
+# %%
+
+use_cols2 = [val for val in use_cols if val in use_cols1]
+
+print('With common features of use_cols and use_cols1:')
+test_cox(use_cols2)
+print()
+
+for i in [val for val in use_cols1 if not val in use_cols]:
+    curr_cols = use_cols2 + [i]
+    print(f'Added feature: {i}')
+    test_cox(curr_cols)
+    print()
 
 # %%
 
