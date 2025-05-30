@@ -771,7 +771,7 @@ class Dataset():
         
         X_sum = np.sum(self.X.astype(bool), axis=0)
         self.X = pd.DataFrame(self.X, index=np.arange(self.patient_num), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
-                                                                                  ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
+                                                                                  ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_AVG", "VAF_MEDIAN", "DEPTH_AVG", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
         '''
         self.X.loc[:, "BM_BLAST"] = np.log(self.X["BM_BLAST"]+1e-9)
         self.X.loc[:, "PLT"] = np.log(self.X["PLT"]+1e-9)
@@ -988,13 +988,13 @@ class Dataset():
             molecular_depth = curr_molecular[:,9]
             
             #sum of the vafs
-            molecular_item[7] = np.sum(molecular_vaf)
+            molecular_item[7] = np.average(molecular_vaf)
             #median of the vafs multiplied by the number of mutations
-            molecular_item[8] = np.median(molecular_vaf)*len(molecular_vaf)
+            molecular_item[8] = np.median(molecular_vaf)#*len(molecular_vaf)
             #sum of the depths
-            molecular_item[9] = np.sum(molecular_depth)
+            molecular_item[9] = np.average(molecular_depth)
             #median of the depths multiplied by the number of mutations
-            molecular_item[10] = np.median(molecular_depth)*len(molecular_depth)
+            molecular_item[10] = np.median(molecular_depth)#*len(molecular_depth)
         
         #combine the clinical and molecular item to get the item for the return
         item = np.append(clinical_item, molecular_item)
