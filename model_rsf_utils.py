@@ -329,6 +329,85 @@ def fit_and_score_features_cox(X, drop_weights=False):
         
     return scores
 
+def scan_features(X_train, X_val, y_train, y_val, model=None, random_state=1):
+    '''
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        Array containing the data used to train the model.
+    y : numpy.ndarray
+        Structured array where each element is a tuple of length 2 and type 
+        [(bool), (float)] containing the target for the training.
+
+    Returns
+    -------
+    scores : numpy.ndarray
+        Array (length=X.shape[1]) containing the concordance indices for 
+        each feature in X.
+
+    '''
+    if model is None:
+        model = CoxPHFitter(penalizer=0.3)
+        
+    if 'weight' in list(X_train.columns):
+        X_train = X_train.drop(columns=['weight'])
+        X_val = X_val.drop(columns=['weight'])
+    
+    features = [val for val in list(X_train.columns) if not val in ['duration', 'event']]
+    n_features = len(features)
+    features_pop = [val for val in list(X_train.columns) if not val in ['duration', 'event']]
+    scores = np.zeros((n_features, n_features))
+    feature_elim = []
+        
+    for i in tqdm(range(n_features)):
+        curr_scores = np.zeros(n_features)
+        curr_max_feature = None
+        curr_max_score = 0
+        curr_max_pos = -1
+                
+        for j in range(len(features_pop)):
+            curr_feature = features_pop[j]
+            curr_X_train = X_train.copy()
+            curr_X_val = X_val.copy()
+            
+            if i < n_features-1:
+                curr_X_train = curr_X_train.drop(columns=[curr_feature])
+                curr_X_val = curr_X_val.drop(columns=[curr_feature])
+            
+            try:
+                model.fit(curr_X_train, y_train, duration_col='duration', event_col='event')
+            except:
+                print(f"model fit error ({i},{j})")
+                if i>0:
+                    curr_score = scores[i-1][j]
+                else:
+                    curr_score = 0
+            else:
+                pred = model.predict_partial_hazard(curr_X_val.drop(columns=['duration', 'event']))
+                #ci = concordance_index_censored(y_val["status"], y_val["time"], pred)[0]
+                curr_score = concordance_index_ipcw(y_train, y_val, pred)[0]
+                
+            curr_scores[np.argwhere(features==curr_feature)] = curr_score
+            
+            if curr_score > curr_max_score:
+                curr_max_score = curr_score
+                curr_max_feature = curr_feature
+                curr_max_pos = j
+                            
+        if curr_max_pos == -1:
+            print(f"curr_min_pos is {curr_max_pos}")
+               
+        features_pop.pop(curr_max_pos)
+        X_train = X_train.drop(columns=[curr_max_feature])
+        X_val = X_val.drop(columns=[curr_max_feature])
+        feature_elim.append(curr_max_feature)
+        scores[i] = curr_scores
+        
+    scores = pd.DataFrame(scores, columns=features)
+                
+    return scores, feature_elim
+
 def test_features(X_df, y, model, random_state=1):
     '''
 
