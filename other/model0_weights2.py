@@ -210,14 +210,19 @@ scan1, features_elim1 = u.scan_features(X_train1, X_val1, y_train1, y_val1, mode
 
 # %%
 
-use_cols00 = features_elim0[56:]
-use_cols11 = features_elim1[56:]
+use_cols0 = features_elim0[54:]
+use_cols1 = features_elim1[40:]
+
+# %%
+
+#use_cols00 = use_cols00
+#use_cols11 = use_cols11
 
 # %%
 
 def test_cox_split(X_train1, X_val1, y_train1, y_val1):
     # Train Cox Proportional Hazard model
-    cox = CoxPHFitter(penalizer=0.1)
+    cox = CoxPHFitter(penalizer=0.01)
     X_train1 = X_train1.drop(columns=['weight'])
     cox.fit(X_train1, duration_col='duration', event_col='event')#, weights_col='weight')
     #cox.fit(X_data_df1, duration_col='duration', event_col='event', weights_col='weight')
