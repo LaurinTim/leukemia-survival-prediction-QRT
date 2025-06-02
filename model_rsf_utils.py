@@ -1181,7 +1181,7 @@ class Dataset():
             X_sub[i] = self.__getItem_sub(np.array(curr_clinical)[0], np.array(curr_molecular))
             
         X_sub = pd.DataFrame(X_sub, index=np.arange(patient_num_sub), columns=[clinical_features + ["XX", "XY"] + ["CYTOGENETICS_"+val for val in cyto_markers] + 
-                                                                                  ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_SUM", "VAF_MEDIAN", "DEPTH_SUM", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
+                                                                                  ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_AVG", "VAF_MEDIAN", "DEPTH_AVG", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
             
         X_sub = X_sub.drop(columns=self.sparse_features)
         
