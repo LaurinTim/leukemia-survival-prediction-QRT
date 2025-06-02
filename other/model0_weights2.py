@@ -196,18 +196,22 @@ def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
 
 # %%
 
+model = CoxPHFitter(penalizer=0.01)
+
+# %%
+
 X_train0, X_val0, y_train0, y_val0 = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
-scan0, features_elim0 = u.scan_features(X_train0, X_val0, y_train0, y_val0)
+scan0, features_elim0 = u.scan_features(X_train0, X_val0, y_train0, y_val0, model=model)
 
 # %%
 
 X_train1, X_val1, y_train1, y_val1 = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
-scan1, features_elim1 = u.scan_features(X_train1, X_val1, y_train1, y_val1)
+scan1, features_elim1 = u.scan_features(X_train1, X_val1, y_train1, y_val1, model=model)
 
 # %%
 
-use_cols0 = features_elim0[56:]
-use_cols1 = features_elim1[56:]
+use_cols00 = features_elim0[56:]
+use_cols11 = features_elim1[56:]
 
 # %%
 
