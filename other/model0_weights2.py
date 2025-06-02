@@ -206,10 +206,16 @@ scan1, features_elim1 = u.scan_features(X_train1, X_val1, y_train1, y_val1)
 
 # %%
 
+use_cols0 = features_elim0[56:]
+use_cols1 = features_elim1[56:]
+
+# %%
+
 def test_cox_split(X_train1, X_val1, y_train1, y_val1):
     # Train Cox Proportional Hazard model
-    cox = CoxPHFitter(penalizer=0.00001)
-    cox.fit(X_train1, duration_col='duration', event_col='event', weights_col='weight')
+    cox = CoxPHFitter(penalizer=0.1)
+    X_train1 = X_train1.drop(columns=['weight'])
+    cox.fit(X_train1, duration_col='duration', event_col='event')#, weights_col='weight')
     #cox.fit(X_data_df1, duration_col='duration', event_col='event', weights_col='weight')
 
     # Evaluate Cox model
@@ -266,7 +272,7 @@ use_cols1 = [i for i in vals1.index if vals1.loc[i].iloc[1] >= threshold]
     
 # %%
 
-test_cox(use_cols)
+test_cox(use_cols0)
 print()
 test_cox(use_cols1)
     
@@ -301,18 +307,19 @@ for i in [val for val in use_cols1 if not val in use_cols]:
 # %%
 
 # Prepare dataset with selected features
-X_data_df1 = X_data_df[use_cols + ['duration', 'event', 'weight']]
+#X_data_df1 = X_data_df[use_cols1 + ['duration', 'event', 'weight']]
+X_data_df1 = X_data_df[use_cols1 + ['duration', 'event']]
 
 # Train-test split with selected features
 X_train1, X_val1, y_train1, y_val1 = train_test_split(X_data_df1, y, test_size=0.3, random_state=1)
 
 # Train Cox Proportional Hazard model
 cox = CoxPHFitter(penalizer=0.0)
-cox.fit(X_train1, duration_col='duration', event_col='event', weights_col='weight')
+cox.fit(X_train1, duration_col='duration', event_col='event')#, weights_col='weight')
 #cox.fit(X_data_df1, duration_col='duration', event_col='event', weights_col='weight')
 
 # Evaluate Cox model
-preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event', 'weight']))
+preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event']))#, 'weight']))
 ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], preds1)[0]
 indp1 = concordance_index_ipcw(y_train1, y_val1, preds1)[0]
 print(ind1, indp1)
@@ -320,20 +327,20 @@ print(ind1, indp1)
 # %%
 
 # Prepare dataset with selected features
-X_data_df1 = X_data_df[use_cols + ['duration', 'event', 'weight']]
+X_data_df1 = X_data_df[use_cols1 + ['duration', 'event']]#, 'weight']]
 
 # Train-test split with selected features
 X_train1, X_val1, y_train1, y_val1 = sets(X_data_df1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 
 # Train Cox Proportional Hazard model
 #cox = CoxPHFitter(penalizer=0.23)
-cox = CoxPHFitter(penalizer=0.23)
-cox.fit(X_train1, duration_col='duration', event_col='event', weights_col='weight')
+cox = CoxPHFitter(penalizer=0.02)
+cox.fit(X_train1, duration_col='duration', event_col='event')#, weights_col='weight')
 #cox.fit(X_train1.drop(columns=['weight']), duration_col='duration', event_col='event')
 #cox.fit(X_data_df1, duration_col='duration', event_col='event', weights_col='weight')
 
 # Evaluate Cox model
-preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event', 'weight']))
+preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event']))#, 'weight']))
 ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], preds1)[0]
 indp1 = concordance_index_ipcw(y_train1, y_val1, preds1)[0]
 print(ind1, indp1)
@@ -341,19 +348,19 @@ print(ind1, indp1)
 # %%
 
 # Prepare dataset with selected features
-X_data_df1 = X_data_df[use_cols + ['duration', 'event', 'weight']]
+X_data_df1 = X_data_df[use_cols1 + ['duration', 'event']]#, 'weight']]
 
 # Train-test split with selected features
 X_train1, X_val1, y_train1, y_val1 = sets(X_data_df1, y, validation_file='Validation_IDs_90.csv', complete_train=True)
 
 # Train Cox Proportional Hazard model
 #cox = CoxPHFitter(penalizer=0.23)
-cox = CoxPHFitter(penalizer=0.23)
+cox = CoxPHFitter(penalizer=0.05)
 #cox.fit(X_train1, duration_col='duration', event_col='event', weights_col='weight')
-cox.fit(X_train1.drop(columns=['weight']), duration_col='duration', event_col='event')
+cox.fit(X_train1, duration_col='duration', event_col='event')
 
 # Evaluate Cox model
-preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event', 'weight']))
+preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event']))#, 'weight']))
 ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], preds1)[0]
 indp1 = concordance_index_ipcw(y_train1, y_val1, preds1)[0]
 print(ind1, indp1)
@@ -361,9 +368,9 @@ print(ind1, indp1)
 # %%
 
 # Generate predictions for submission
-pt_sub = cox.predict_partial_hazard(X_sub_df[use_cols])
+pt_sub = cox.predict_partial_hazard(X_sub_df[use_cols1])
 submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
-submission_df.to_csv(data_dir + "\\submission_files\\cox_weights_no0.csv", index=False)
+submission_df.to_csv(data_dir + "\\submission_files\\cox_weights_no2.csv", index=False)
 
 # %%
 
