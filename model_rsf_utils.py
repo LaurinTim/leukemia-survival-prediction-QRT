@@ -1051,7 +1051,7 @@ class Dataset():
                 if temp_molecular_mutation_type[0]!=1:
                     molecular_lengths_median.append(temp_mut_len)
                 
-            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            molecular_item[1] = np.average(molecular_lengths)
             #molecular_item[2] = np.median([val for val in molecular_lengths_median if val>0])
             if len(molecular_lengths_median)==0:
                 molecular_item[2] = 0
@@ -1066,9 +1066,9 @@ class Dataset():
             molecular_vaf = curr_molecular[:,8]
             molecular_depth = curr_molecular[:,9]
             
-            #sum of the vafs
+            #average of the vafs
             molecular_item[7] = np.average(molecular_vaf)
-            #median of the vafs multiplied by the number of mutations
+            #median of the vafs not multiplied by the number of mutations
             molecular_item[8] = np.median(molecular_vaf)#*len(molecular_vaf)
             #sum of the depths
             molecular_item[9] = np.average(molecular_depth)
@@ -1253,7 +1253,7 @@ class Dataset():
                 if temp_molecular_mutation_type[0]!=1:
                     molecular_lengths_median.append(temp_mut_len)
                 
-            molecular_item[1] = np.sum(molecular_lengths)/len(molecular_lengths)
+            molecular_item[1] = np.average(molecular_lengths)
             #molecular_item[2] = np.median([val for val in molecular_lengths_median if val>0])
             if len(molecular_lengths_median)==0:
                 molecular_item[2] = 0
@@ -1266,10 +1266,10 @@ class Dataset():
             
             molecular_vaf = curr_molecular[:,8]
             molecular_depth = curr_molecular[:,9]
-            molecular_item[7] = np.sum(molecular_vaf)
-            molecular_item[8] = np.median(molecular_vaf)*len(molecular_vaf)
-            molecular_item[9] = np.sum(molecular_depth)
-            molecular_item[10] = np.median(molecular_depth)*len(molecular_depth)
+            molecular_item[7] = np.average(molecular_vaf)
+            molecular_item[8] = np.median(molecular_vaf)#*len(molecular_vaf)
+            molecular_item[9] = np.average(molecular_depth)
+            molecular_item[10] = np.median(molecular_depth)#*len(molecular_depth)
         
         item = np.append(clinical_item, molecular_item)
         
