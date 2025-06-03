@@ -74,7 +74,7 @@ clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 # %%
 
 # Instantiate dataset class
-a = u.Dataset(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=0)
+a = u.Dataset(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=2)
 
 # Convert dataset into feature matrices
 X_data_df = a.X
@@ -85,8 +85,8 @@ y = a.y
 y = np.array([(bool(val[0]), float(val[1])) for val in y], dtype=[('status', bool), ('time', float)])
 
 # Add duration and event columns to X_data_df
-#X_data_df.insert(0, 'event', y['status'])
-#X_data_df.insert(0, 'duration', y['time'])
+X_data_df.insert(0, 'event', y['status'])
+X_data_df.insert(0, 'duration', y['time'])
 
 # Get data for the submission set
 clinical_df_sub, molecular_df_sub = d.submission_data_prep()
@@ -214,6 +214,12 @@ scan0, features_elim0 = u.scan_features(X_train0, X_val0, y_train0, y_val0, mode
 
 X_train1, X_val1, y_train1, y_val1 = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 scan1, features_elim1 = u.scan_features(X_train1, X_val1, y_train1, y_val1, model=model)
+
+# %%
+
+print(np.max(np.array(scan0)), np.max(np.array(scan1)))
+print(np.argmax(np.array(scan0))//X_data_df.shape[1], np.argmax(np.array(scan0))%X_data_df.shape[1])
+print(np.argmax(np.array(scan1))//X_data_df.shape[1], np.argmax(np.array(scan1))%X_data_df.shape[1])
 
 # %%
 
