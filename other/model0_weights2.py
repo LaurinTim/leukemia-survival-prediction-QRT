@@ -73,12 +73,8 @@ clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 
 # %%
 
-clis, mols = d.submission_data_prep(clinical_df_sub=clinical_df_original, molecular_df_sub=molecular_df_original)
-
-# %%
-
 # Instantiate dataset class
-a = u.Dataset(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=30)
+a = u.Dataset(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=0)
 
 # Convert dataset into feature matrices
 X_data_df = a.X
@@ -100,9 +96,9 @@ X_sub = np.array(X_sub_df)
 
 # %%
 
-#X_train, X_val, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
-Xt, idst = a.submission_data(clis, mols, test=True)
-Xt.columns = [val[0] for val in list(Xt.columns)]
+#clis, mols = d.submission_data_prep(clinical_df_sub=clinical_df_original, molecular_df_sub=molecular_df_original)
+#Xt, idst = a.submission_data(clis, mols, test=True)
+#Xt.columns = [val[0] for val in list(Xt.columns)]
 
 # %%
 
