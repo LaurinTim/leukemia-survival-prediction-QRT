@@ -766,10 +766,12 @@ class DatasetPrep():
             Dataframe containing the prepared molecular data for a submission.
 
         '''
+        clinical_None = True
         if clinical_df_sub is None:
             #get submission clinical data
             clinical_df_sub = pd.read_csv(clinical_file_sub)
             #clinical_df_sub = pd.read_csv(clinical_file)
+            clinical_None = False
             
         #fill the nan values in selected columns with the mean value from the same columns in self.clinical_df_nan
         clinical_df_sub = self.__fillna_df(clinical_df_sub, self.clinical_df_nan, ["BM_BLAST", "WBC", "ANC", "MONOCYTES", "HB", "PLT"])
@@ -784,10 +786,12 @@ class DatasetPrep():
         patient_ids_sub = np.array(clinical_df_sub.loc[:,"ID"])
         patient_num_sub = patient_ids_sub.shape[0]
         
+        molecular_None = True
         if molecular_df_sub is None:
             #get the submission molecular data
             molecular_df_sub = pd.read_csv(molecular_file_sub)
             #molecular_df_sub = pd.read_csv(molecular_file)
+            molecular_None = False
         
         #use one hot encoding for the columns in self.molecular_dummies_columns
         molecular_df_sub = pd.get_dummies(molecular_df_sub, columns = self.molecular_dummies_columns)
@@ -824,10 +828,10 @@ class DatasetPrep():
         molecular_df_sub = molecular_df_sub[self.molecular_df.columns]
         #molecular_df_sub = self.__fillna_df(molecular_df_sub, self.molecular_df_nan, ["START", "END", "VAF", "DEPTH"])
         
-        if not clinical_df_sub is None:
+        if clinical_None:
             clinical_df_sub = self.__valid_patients_df(clinical_df_sub)
             
-        if not molecular_df_sub is None:
+        if molecular_None:
             molecular_df_sub = self.__valid_patients_df(molecular_df_sub)
         
         return clinical_df_sub, molecular_df_sub
@@ -854,6 +858,8 @@ class Dataset():
             The default is 5.
 
         '''
+        self.min_occurences = min_occurences
+        
         self.status_df = status_df
         self.patient_ids = np.array(self.status_df.loc[:,"ID"])
         self.patient_num = self.patient_ids.shape[0]
@@ -1171,7 +1177,7 @@ class Dataset():
         return res, mut_len
     
     
-    def submission_data(self, clinical_df_sub, molecular_df_sub):
+    def submission_data(self, clinical_df_sub, molecular_df_sub, test=False):
         '''
 
         Parameters
@@ -1207,6 +1213,9 @@ class Dataset():
                                                                                   ["MUTATIONS_NUMBER", "AVG_MUTATION_LENGTH", "MEDIAN_MUTATION_LENGTH", "EFFECT_MEDIAN_SURVIVAL"] + ["MUTATIONS_SUB", "MUTATIONS_DEL", "MUTATIONS_INS"] + ["VAF_AVG", "VAF_MEDIAN", "DEPTH_AVG", "DEPTH_MEDIAN"] + list(self.molecular_df.columns)[10:]])
             
         X_sub = X_sub.drop(columns=self.sparse_features)
+        
+        if test:
+            X_sub = X_sub.drop(columns=self.sparse_features_sub)
         
         return X_sub, patient_ids_sub
         
