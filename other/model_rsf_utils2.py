@@ -619,6 +619,15 @@ def set_random_seed(random_seed) -> None:
     random.seed(random_seed)
     torch.manual_seed(random_seed)
     
+def count_trailing_digits(s):
+    count = 0
+    for char in reversed(s):
+        if char.isdigit():
+            count += 1
+        else:
+            break
+    return count
+    
 # %%
 
 class DatasetPrep():
@@ -669,7 +678,7 @@ class DatasetPrep():
         
         self.molecular_df.insert(7, "EFFECT_MEDIAN_SURVIVAL", np.array(itemgetter(*np.array(self.molecular_df["EFFECT"]))(effects_map))) #* np.array(self.molecular_df["VAF"]))
         
-        self.molecular_df = self.molecular_df.sort_values(by=["ID"]).reset_index(drop=True)
+        self.molecular_df = self.molecular_df.sort_values(by=["ID", 'START']).reset_index(drop=True)
         self.molecular_columns = np.array(self.molecular_df.columns)
         self.molecular_arr = self.molecular_df.to_numpy(copy=True)
         
@@ -742,7 +751,7 @@ class DatasetPrep():
         '''
         self.molecular_split = np.split(self.molecular_arr, np.unique(self.molecular_arr[:,0], return_index=True)[1][1:])
         
-    def submission_data_prep(self):
+    def submission_data_prep(self, clinical_df_sub=None, molecular_df_sub=None):
         '''
         
         Prepares the data for the submission in clinical_file_sub for the 
@@ -757,14 +766,16 @@ class DatasetPrep():
             Dataframe containing the prepared molecular data for a submission.
 
         '''
-        #get submission clinical data
-        clinical_df_sub = pd.read_csv(clinical_file_sub)
-        #clinical_df_sub = pd.read_csv(clinical_file)
+        if clinical_df_sub is None:
+            #get submission clinical data
+            clinical_df_sub = pd.read_csv(clinical_file_sub)
+            #clinical_df_sub = pd.read_csv(clinical_file)
+            
         #fill the nan values in selected columns with the mean value from the same columns in self.clinical_df_nan
         clinical_df_sub = self.__fillna_df(clinical_df_sub, self.clinical_df_nan, ["BM_BLAST", "WBC", "ANC", "MONOCYTES", "HB", "PLT"])
         
         #sort the clinical data according to the patient ids
-        clinical_sub_sort_index = [float(val[3:]) for val in list(clinical_df_sub.loc[:,"ID"])]
+        clinical_sub_sort_index = [float(val[(len(val)-count_trailing_digits(val)):]) for val in list(clinical_df_sub.loc[:,"ID"])]
         clinical_df_sub.insert(9, "sort_index", clinical_sub_sort_index)
         clinical_df_sub = clinical_df_sub.sort_values(by=["sort_index"]).reset_index(drop=True)
         clinical_df_sub = clinical_df_sub.drop(columns=["sort_index"])
@@ -773,19 +784,25 @@ class DatasetPrep():
         patient_ids_sub = np.array(clinical_df_sub.loc[:,"ID"])
         patient_num_sub = patient_ids_sub.shape[0]
         
-        #get the submission molecular data
-        molecular_df_sub = pd.read_csv(molecular_file_sub)
-        #molecular_df_sub = pd.read_csv(molecular_file)
+        if molecular_df_sub is None:
+            #get the submission molecular data
+            molecular_df_sub = pd.read_csv(molecular_file_sub)
+            #molecular_df_sub = pd.read_csv(molecular_file)
+        
         #use one hot encoding for the columns in self.molecular_dummies_columns
         molecular_df_sub = pd.get_dummies(molecular_df_sub, columns = self.molecular_dummies_columns)
         #fill the nan values in selected columns with the mean value from the same columns in self.molecular_df_nan
         molecular_df_sub = self.__fillna_df(molecular_df_sub, self.molecular_df_nan, ["START", "END", "VAF", "DEPTH"])
              
         #sort the molecular data according to the patient ids           
-        molecular_sub_sort_index = [float(val[3:]) for val in list(molecular_df_sub.loc[:,"ID"])]
+        '''
+        molecular_sub_sort_index = [float(val[(len(val)-count_trailing_digits(val)):]) for val in list(molecular_df_sub.loc[:,"ID"])]
         molecular_df_sub.insert(11, "sort_index", molecular_sub_sort_index)
         molecular_df_sub = molecular_df_sub.sort_values(by=["sort_index"]).reset_index(drop=True)
         molecular_df_sub = molecular_df_sub.drop(columns=["sort_index"])
+        '''
+        
+        molecular_df_sub = molecular_df_sub.sort_values(by=["ID", 'START']).reset_index(drop=True)
         
         #get the median survival of all patient in the training data
         global_median_survival = np.median(self.status_arr[:,1])
@@ -806,7 +823,10 @@ class DatasetPrep():
         #reorder the columns of the submission molecular df so they are in the same order as for the training molecular df
         molecular_df_sub = molecular_df_sub[self.molecular_df.columns]
         #molecular_df_sub = self.__fillna_df(molecular_df_sub, self.molecular_df_nan, ["START", "END", "VAF", "DEPTH"])
-                
+        
+        #clinical_df_sub = self.__valid_patients_df(clinical_df_sub)
+        #molecular_df_sub = self.__valid_patients_df(molecular_df_sub)
+        
         return clinical_df_sub, molecular_df_sub
         
 class Dataset():
