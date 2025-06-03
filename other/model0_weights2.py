@@ -102,6 +102,7 @@ X_sub = np.array(X_sub_df)
 
 #X_train, X_val, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
 Xt, idst = a.submission_data(clis, mols, test=True)
+Xt.columns = [val[0] for val in list(Xt.columns)]
 
 # %%
 
