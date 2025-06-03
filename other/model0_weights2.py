@@ -73,7 +73,7 @@ clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 
 # %%
 
-clis, mols = d.submission_data_prep()
+clis, mols = d.submission_data_prep(clinical_df_sub=clinical_df_original, molecular_df_sub=molecular_df_original)
 
 # %%
 
@@ -89,8 +89,8 @@ y = a.y
 y = np.array([(bool(val[0]), float(val[1])) for val in y], dtype=[('status', bool), ('time', float)])
 
 # Add duration and event columns to X_data_df
-X_data_df.insert(0, 'event', y['status'])
-X_data_df.insert(0, 'duration', y['time'])
+#X_data_df.insert(0, 'event', y['status'])
+#X_data_df.insert(0, 'duration', y['time'])
 
 # Get data for the submission set
 clinical_df_sub, molecular_df_sub = d.submission_data_prep()
@@ -100,8 +100,8 @@ X_sub = np.array(X_sub_df)
 
 # %%
 
-X_train, X_val, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
-
+#X_train, X_val, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
+Xt, idst = a.submission_data(clis, mols, test=True)
 
 # %%
 
