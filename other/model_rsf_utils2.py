@@ -824,8 +824,11 @@ class DatasetPrep():
         molecular_df_sub = molecular_df_sub[self.molecular_df.columns]
         #molecular_df_sub = self.__fillna_df(molecular_df_sub, self.molecular_df_nan, ["START", "END", "VAF", "DEPTH"])
         
-        #clinical_df_sub = self.__valid_patients_df(clinical_df_sub)
-        #molecular_df_sub = self.__valid_patients_df(molecular_df_sub)
+        if not clinical_df_sub is None:
+            clinical_df_sub = self.__valid_patients_df(clinical_df_sub)
+            
+        if not molecular_df_sub is None:
+            molecular_df_sub = self.__valid_patients_df(molecular_df_sub)
         
         return clinical_df_sub, molecular_df_sub
         
