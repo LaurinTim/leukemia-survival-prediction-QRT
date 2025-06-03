@@ -44,7 +44,8 @@ import os
 os.chdir(data_dir)
 
 # Import utility functions from model_rsf_utils
-import model_rsf_utils as u
+import other.model_rsf_utils2 as u
+#import model_rsf_utils as u
 
 # Set random seed for reproducibility
 random_seed = 1
@@ -72,6 +73,10 @@ clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 
 # %%
 
+clis, mols = d.submission_data_prep()
+
+# %%
+
 # Instantiate dataset class
 a = u.Dataset(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=30)
 
@@ -92,6 +97,11 @@ clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 X_sub_df, patient_ids_sub = a.X_sub, a.patient_ids_sub
 #X_sub_df.columns = [val[0] for val in list(X_sub_df.columns)]
 X_sub = np.array(X_sub_df)
+
+# %%
+
+X_train, X_val, y_train, y_val = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
+
 
 # %%
 
@@ -255,7 +265,7 @@ X_train_df, X_val_df, y_train, y_val = train_test_split(X_data_df, y, test_size=
 scores = u.fit_and_score_features_cox(X_train_df, drop_weights=True)
 
 # Rank features based on their importance
-vals = pd.DataFrame(scores, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
+vals0 = pd.DataFrame(scores, index=[val for val in X_data_df.columns if not val in ['duration', 'event', 'weight']], columns=["C-Index", "IPCW C-Index"])
 
 # %%
 
@@ -271,7 +281,7 @@ vals1 = pd.DataFrame(scores1, index=[val for val in X_data_df.columns if not val
 
 # Select features based on a threshold
 threshold = 0.525
-use_cols = [i for i in vals.index if vals.loc[i].iloc[1] >= threshold]
+use_cols0 = [i for i in vals0.index if vals0.loc[i].iloc[1] >= threshold]
 
 # %%
 
@@ -287,13 +297,13 @@ test_cox(use_cols1)
     
 # %%
 
-use_cols2 = [val for val in use_cols if val in use_cols1]
+use_cols2 = [val for val in use_cols0 if val in use_cols1]
 
 print('With common features of use_cols and use_cols1:')
 test_cox(use_cols2)
 print()
 
-for i in [val for val in use_cols if not val in use_cols1]:
+for i in [val for val in use_cols0 if not val in use_cols1]:
     curr_cols = use_cols2 + [i]
     print(f'Added feature: {i}')
     test_cox(curr_cols)
@@ -301,13 +311,13 @@ for i in [val for val in use_cols if not val in use_cols1]:
     
 # %%
 
-use_cols2 = [val for val in use_cols if val in use_cols1]
+use_cols2 = [val for val in use_cols0 if val in use_cols1]
 
 print('With common features of use_cols and use_cols1:')
 test_cox(use_cols2)
 print()
 
-for i in [val for val in use_cols1 if not val in use_cols]:
+for i in [val for val in use_cols1 if not val in use_cols0]:
     curr_cols = use_cols2 + [i]
     print(f'Added feature: {i}')
     test_cox(curr_cols)
@@ -384,7 +394,7 @@ submission_df.to_csv(data_dir + "\\submission_files\\cox_weights_no2.csv", index
 # %%
 
 # Prepare dataset with selected features
-X_data_df1 = X_data_df[use_cols]
+X_data_df1 = X_data_df[use_cols0]
 X1 = np.array(X_data_df1)
 
 X_train1, X_val1, y_train1, y_val1 = train_test_split(X1, y, test_size=0.3, random_state=1)
@@ -405,7 +415,7 @@ print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
 # %%
 
 # Prepare dataset with selected features
-X_data_df1 = X_data_df[use_cols]
+X_data_df1 = X_data_df[use_cols0]
 X1 = np.array(X_data_df1)
 
 X_train1, X_val1, y_train1, y_val1 = sets(X1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
@@ -428,7 +438,7 @@ print(f"Validation C-Index and IPCW C-Index: {ind1:0.4f}, {indp1:0.4f}")
 # Prepare test submission data
 clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 X_sub_df, patient_ids_sub = a.submission_data(clinical_df_sub, molecular_df_sub)
-X_sub_df1 = X_sub_df[use_cols]
+X_sub_df1 = X_sub_df[use_cols0]
 X_sub = np.array(X_sub_df1)
 
 # %%
