@@ -889,7 +889,7 @@ class Dataset():
         self.X = self.X.drop(columns=self.sparse_features_sub)
         
         #remove multiindex columns from X and X_sub
-        #self.X.columns = ['_'.join(col) for col in self.X.columns]
+        self.X.columns = ['_'.join(col) for col in self.X.columns]
         self.X_sub.columns = ['_'.join(col) for col in self.X_sub.columns]
         
     def __getData(self) -> None:
