@@ -62,7 +62,7 @@ molecular_df_original = pd.read_csv(molecular_file)
 effects_map = u.effect_to_survival_map()
 
 # Prepare dataset
-d = u.DatasetPrep(status_df_original, clinical_df_original, molecular_df_original, ["CHR", "GENE"], effects_map)
+d = u.DatasetPrep1(status_df_original, clinical_df_original, molecular_df_original, ["CHR", "EFFECT", "GENE"], effects_map)
 
 # Extract processed datasets
 status_df = d.status_df
@@ -74,7 +74,7 @@ clinical_df_sub, molecular_df_sub = d.submission_data_prep()
 # %%
 
 # Instantiate dataset class
-a = u.Dataset(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=2)
+a = u.Dataset1(status_df, clinical_df, molecular_df, clinical_df_sub, molecular_df_sub, min_occurences=2)
 
 # Convert dataset into feature matrices
 X_data_df = a.X
@@ -212,6 +212,27 @@ model = CoxPHFitter(penalizer=0.01)
 
 # %%
 
+X_train0e, X_val0e, y_train0e, y_val0e = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+scan0e, features_elim0e = u.scan_features(X_train0e, X_val0e, y_train0e, y_val0e, model=model)
+
+# %%
+
+X_train1e, X_val1e, y_train1e, y_val1e = sets(X_data_df, y, validation_file='Validation_IDs_95.csv', complete_train=False)
+scan1e, features_elim1e = u.scan_features(X_train1e, X_val1e, y_train1e, y_val1e, model=model)
+
+# %%
+
+print(np.max(np.array(scan0e)), np.max(np.array(scan1e)))
+print(np.argmax(np.array(scan0e))//scan0e.shape[1], np.argmax(np.array(scan0e))%scan0e.shape[1])
+print(np.argmax(np.array(scan1e))//scan1e.shape[1], np.argmax(np.array(scan1e))%scan1e.shape[1])
+
+# %%
+
+use_cols0 = features_elim0e[87:]
+use_cols1 = features_elim1e[58:]
+
+# %%
+
 X_train0, X_val0, y_train0, y_val0 = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 scan0, features_elim0 = u.scan_features(X_train0, X_val0, y_train0, y_val0, model=model)
 
@@ -237,16 +258,16 @@ scan1.to_csv(data_dir + "\\other\\saved data\\scan_95.csv", index=False)
 scan2.to_csv(data_dir + "\\other\\saved data\\scan_80.csv", index=False)
 scan3.to_csv(data_dir + "\\other\\saved data\\scan_70.csv", index=False)
 
-features_elim0.to_csv(data_dir + "\\other\\saved data\\features_90.csv", index=False)
-features_elim1.to_csv(data_dir + "\\other\\saved data\\features_95.csv", index=False)
-features_elim2.to_csv(data_dir + "\\other\\saved data\\features_80.csv", index=False)
-features_elim3.to_csv(data_dir + "\\other\\saved data\\features_70.csv", index=False)
+features_elim = pd.DataFrame([features_elim0, features_elim1, features_elim2, features_elim3], index=['scan_90', 'scan_95', 'scan_80', 'scan_70']).T
+features_elim.to_csv(data_dir + "\\other\\saved data\\features_elim.csv", index=False)
 
 # %%
 
-print(np.max(np.array(scan0)), np.max(np.array(scan1)))
-print(np.argmax(np.array(scan0))//X_data_df.shape[1], np.argmax(np.array(scan0))%X_data_df.shape[1])
-print(np.argmax(np.array(scan1))//X_data_df.shape[1], np.argmax(np.array(scan1))%X_data_df.shape[1])
+print(np.max(np.array(scan0)), np.max(np.array(scan1)), np.max(np.array(scan2)), np.max(np.array(scan3)))
+print(np.argmax(np.array(scan0))//scan0.shape[1], np.argmax(np.array(scan0))%scan0.shape[1])
+print(np.argmax(np.array(scan1))//scan1.shape[1], np.argmax(np.array(scan1))%scan1.shape[1])
+print(np.argmax(np.array(scan2))//scan2.shape[1], np.argmax(np.array(scan2))%scan2.shape[1])
+print(np.argmax(np.array(scan3))//scan3.shape[1], np.argmax(np.array(scan3))%scan3.shape[1])
 
 # %%
 
@@ -260,7 +281,7 @@ use_cols1 = features_elim1[40:]
 
 # %%
 
-def test_cox_split(X_train1, X_val1, y_train1, y_val1):
+def test_cox_split(X_train1, X_val1, y_train1, y_val1, tau=None):
     # Train Cox Proportional Hazard model
     cox = CoxPHFitter(penalizer=0.01)
     X_train1 = X_train1.drop(columns=['weight'])
@@ -270,22 +291,46 @@ def test_cox_split(X_train1, X_val1, y_train1, y_val1):
     # Evaluate Cox model
     preds1 = cox.predict_partial_hazard(X_val1.drop(columns=['duration', 'event', 'weight']))
     ind1 = concordance_index_censored(y_val1['status'], y_val1['time'], preds1)[0]
-    indp1 = concordance_index_ipcw(y_train1, y_val1, preds1)[0]
+    indp1 = concordance_index_ipcw(y_train1, y_val1, preds1, tau=tau)[0]
     return ind1, indp1
     
 
-def test_cox(use_cols, random_state=1):
+def test_cox(use_cols, random_state=1, tau=None):
     # Prepare dataset with selected features
     X_data_df1 = X_data_df[use_cols + ['duration', 'event', 'weight']]
     
     X_train1, X_val1, y_train1, y_val1 = train_test_split(X_data_df1, y, test_size=0.3, random_state=random_state)
-    ind10, indp10 = test_cox_split(X_train1, X_val1, y_train1, y_val1)
+    ind10, indp10 = test_cox_split(X_train1, X_val1, y_train1, y_val1, tau=tau)
     
     X_train1, X_val1, y_train1, y_val1 = sets(X_data_df1, y, validation_file='Validation_IDs_90.csv', complete_train=False)
-    ind11, indp11 = test_cox_split(X_train1, X_val1, y_train1, y_val1)
-
-    print(ind10, indp10)
-    print(ind11, indp11)
+    ind11, indp11 = test_cox_split(X_train1, X_val1, y_train1, y_val1, tau=tau)
+    
+    X_train2, X_val2, y_train2, y_val2 = sets(X_data_df1, y, validation_file='Validation_IDs_95.csv', complete_train=False)
+    ind12, indp12 = test_cox_split(X_train2, X_val2, y_train2, y_val2, tau=tau)
+    '''
+    val_ids1 = pd.read_csv(data_dir + '\\val_ids\\Validation_IDs_90.csv')
+    val_ids2 = pd.read_csv(data_dir + '\\val_ids\\Validation_IDs_95.csv')
+    X_train3 = X_data_df1[[False if val in list(val_ids1['ID']) and not val in list(val_ids2['ID']) else True for val in a.patient_ids]]
+    y_train3 = y[[False if val in list(val_ids1['ID']) and not val in list(val_ids2['ID']) else True for val in a.patient_ids]]
+    X_val3 = X_data_df1[[True if val in list(val_ids1['ID']) and not val in list(val_ids2['ID']) else False for val in a.patient_ids]]
+    y_val3 = y[[True if val in list(val_ids1['ID']) and not val in list(val_ids2['ID']) else False for val in a.patient_ids]]
+    ind13, indp13 = test_cox_split(X_train3, X_val3, y_train3, y_val3)
+    '''
+    X_train3, X_val3, y_train3, y_val3 = sets(X_data_df1, y, validation_file='Validation_IDs_90-95.csv', complete_train=False)
+    ind13, indp13 = test_cox_split(X_train3, X_val3, y_train3, y_val3, tau=tau)
+    
+    X_train4, X_val4, y_train4, y_val4 = sets(X_data_df1, y, validation_file='Validation_IDs_80.csv', complete_train=False)
+    ind14, indp14 = test_cox_split(X_train4, X_val4, y_train4, y_val4, tau=tau)
+    
+    X_train5, X_val5, y_train5, y_val5 = sets(X_data_df1, y, validation_file='Validation_IDs_70.csv', complete_train=False)
+    ind15, indp15 = test_cox_split(X_train5, X_val5, y_train5, y_val5, tau=tau)
+    
+    print(f'train_test_split:     {ind10:0.5f}, {indp10:0.5f}')
+    print(f'Validation_IDs_90:    {ind11:0.5f}, {indp11:0.5f}')
+    print(f'Validation_IDs_95:    {ind12:0.5f}, {indp12:0.5f}')
+    print(f'Validation_IDs_90-95: {ind13:0.5f}, {indp13:0.5f}')
+    print(f'Validation_IDs_80:    {ind14:0.5f}, {indp14:0.5f}')
+    print(f'Validation_IDs_70:    {ind15:0.5f}, {indp15:0.5f}')
 
 # %%
 
@@ -318,12 +363,17 @@ use_cols0 = [i for i in vals0.index if vals0.loc[i].iloc[1] >= threshold]
 # Select features based on a threshold
 #threshold = 0.515
 use_cols1 = [i for i in vals1.index if vals1.loc[i].iloc[1] >= threshold]
+
+# %%
+
+use_cols0 = features_elim0[66:]
+use_cols1 = features_elim1e[75:]
     
 # %%
 
-test_cox(use_cols0)
+test_cox(use_cols0, tau=7)
 print()
-test_cox(use_cols1)
+test_cox(use_cols0, tau=None)
     
 # %%
 
