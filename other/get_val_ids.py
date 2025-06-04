@@ -91,12 +91,27 @@ clf.fit(X_combined, y_combined)
 probs = clf.predict_proba(X_combined[:X_train_pca.shape[0]])[:, 1]  # Probability of being test-like
 
 # Score and select top 25% most test-like training samples
-threshold = np.percentile(probs, 70)
+threshold = np.percentile(probs, 90)
 selected_indices = np.where(probs >= threshold)[0]
 
 # Output selected validation set IDs
 selected_ids = pd.DataFrame(a.patient_ids[[selected_indices]].reshape(-1,1), columns=['ID'])
-selected_ids.to_csv(data_dir + '\\val_ids\\Validation_IDs_70.csv', index=False)
+#selected_ids.to_csv(data_dir + '\\val_ids\\Validation_IDs_90-95.csv', index=False)
+
+# %%
+
+# Score and select top 25% most test-like training samples
+threshold1 = np.percentile(probs, 90)
+selected_indices1 = np.where(probs >= threshold1)[0]
+
+threshold2 = np.percentile(probs, 95)
+selected_indices2 = np.where(probs >= threshold2)[0]
+
+selected_indices = np.array([val for val in selected_indices1 if not val in selected_indices2])
+
+# Output selected validation set IDs
+selected_ids = pd.DataFrame(a.patient_ids[[selected_indices]].reshape(-1,1), columns=['ID'])
+selected_ids.to_csv(data_dir + '\\val_ids\\Validation_IDs_90-95.csv', index=False)
 
 # %%
 
