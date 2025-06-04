@@ -991,7 +991,7 @@ class Dataset1():
                     number of mutations of the depth of the mutations.
                     
                 item[len(clinical_features)+2+len(cyto_markers)+4+3+4:len(clinical_features)+2+len(cyto_markers)+4+3+4+len(list(self.molecular_df.colums)[:10])]:
-                    One hot encoded features, per default "CHR" and "GENE".
+                    One hot encoded features, per default "CHR", "EFFECT" and "GENE".
         status_item : tuple
             Tuple with the status of the current patient with type bool at 
             position 0 and the survival time of the current patient with type 
