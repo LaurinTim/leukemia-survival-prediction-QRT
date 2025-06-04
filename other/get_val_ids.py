@@ -96,7 +96,7 @@ selected_indices = np.where(probs >= threshold)[0]
 
 # Output selected validation set IDs
 selected_ids = pd.DataFrame(a.patient_ids[[selected_indices]].reshape(-1,1), columns=['ID'])
-selected_ids.to_csv(data_dir + '\\Validation_IDs_90.csv', index=False)
+selected_ids.to_csv(data_dir + '\\val_ids\\Validation_IDs_90.csv', index=False)
 
 # %%
 
