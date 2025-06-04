@@ -207,13 +207,40 @@ model = CoxPHFitter(penalizer=0.01)
 
 # %%
 
-X_train0, X_val0, y_train0, y_val0 = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
+#X_train0, X_val0, y_train0, y_val0 = train_test_split(X_data_df, y, test_size=0.3, random_state=1)
+#scan0, features_elim0 = u.scan_features(X_train0, X_val0, y_train0, y_val0, model=model)
+
+# %%
+
+X_train0, X_val0, y_train0, y_val0 = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
 scan0, features_elim0 = u.scan_features(X_train0, X_val0, y_train0, y_val0, model=model)
 
 # %%
 
-X_train1, X_val1, y_train1, y_val1 = sets(X_data_df, y, validation_file='Validation_IDs_90.csv', complete_train=False)
+X_train1, X_val1, y_train1, y_val1 = sets(X_data_df, y, validation_file='Validation_IDs_95.csv', complete_train=False)
 scan1, features_elim1 = u.scan_features(X_train1, X_val1, y_train1, y_val1, model=model)
+
+# %%
+
+X_train2, X_val2, y_train2, y_val2 = sets(X_data_df, y, validation_file='Validation_IDs_80.csv', complete_train=False)
+scan2, features_elim2 = u.scan_features(X_train2, X_val2, y_train2, y_val2, model=model)
+
+# %%
+
+X_train3, X_val3, y_train3, y_val3 = sets(X_data_df, y, validation_file='Validation_IDs_70.csv', complete_train=False)
+scan3, features_elim3 = u.scan_features(X_train3, X_val3, y_train3, y_val3, model=model)
+
+# %%
+
+scan0.to_csv(data_dir + "\\other\\saved data\\scan_90.csv", index=False)
+scan1.to_csv(data_dir + "\\other\\saved data\\scan_95.csv", index=False)
+scan2.to_csv(data_dir + "\\other\\saved data\\scan_80.csv", index=False)
+scan3.to_csv(data_dir + "\\other\\saved data\\scan_70.csv", index=False)
+
+features_elim0.to_csv(data_dir + "\\other\\saved data\\features_90.csv", index=False)
+features_elim1.to_csv(data_dir + "\\other\\saved data\\features_95.csv", index=False)
+features_elim2.to_csv(data_dir + "\\other\\saved data\\features_80.csv", index=False)
+features_elim3.to_csv(data_dir + "\\other\\saved data\\features_70.csv", index=False)
 
 # %%
 
