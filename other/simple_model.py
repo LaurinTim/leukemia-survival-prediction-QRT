@@ -83,12 +83,13 @@ data_df, test_df = u.reduce_df(data_df, test_df, num=10)
 
 # %%
 
-train_df, val_df, train_y, val_y = train_test_split(data_df, y, test_size=0.3, random_state=2)
+train_df, val_df, train_y, val_y = train_test_split(data_df, y, test_size=0.3, random_state=10)
 
 model = CoxPHSurvivalAnalysis(alpha=10, verbose=1)
 model.fit(train_df, train_y)
 
 pred = model.predict(val_df)
+pred_cox = np.array([(val-min(pred))/(max(pred)-min(pred)) for val in pred])
 
 ind = concordance_index_censored(val_y['status'], val_y['time'], pred)[0]
 indp = concordance_index_ipcw(train_y, val_y, pred, tau=7)[0]
@@ -98,12 +99,14 @@ print(f'{indp:0.5f}')
 
 # %%
 
-train_df, val_df, train_y, val_y = train_test_split(data_df, y, test_size=0.3, random_state=2)
+#train_df, val_df, train_y, val_y = train_test_split(data_df, y, test_size=0.3, random_state=2)
 
-model = RandomSurvivalForest(n_estimators=10000, max_depth=21, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0)
+model = RandomSurvivalForest(n_estimators=300, max_depth=21, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0)
 model.fit(train_df, train_y)
 
 pred = model.predict(val_df)
+pred_rsf = np.array([(val-min(pred))/(max(pred)-min(pred)) for val in pred])
+
 pred_train = model.predict(train_df)
 
 ind = concordance_index_censored(val_y['status'], val_y['time'], pred)[0]
@@ -118,6 +121,44 @@ print()
 print(f'{ind_train:0.5f}')
 print(f'{indp_train:0.5f}')
 
+# %%
+
+pred_comb = (pred_cox + pred_rsf) / 2
+
+ind_comb = concordance_index_censored(val_y['status'], val_y['time'], pred_comb)[0]
+indp_comb = concordance_index_ipcw(train_y, val_y, pred_comb, tau=7)[0]
+
+print('Averaged cox and rsf pred:')
+print(f'{ind_comb:0.5f}')
+print(f'{indp_comb:0.5f}')
+
+# %%
+
+pred_sel = np.array([val if kal<=-1.7 else bal for val,bal,kal in zip(pred_cox, pred_rsf, list(val_df['WBC']))])
+
+ind_sel = concordance_index_censored(val_y['status'], val_y['time'], pred_sel)[0]
+indp_sel = concordance_index_ipcw(train_y, val_y, pred_sel, tau=7)[0]
+
+print('WBC:')
+print(f'{ind_sel:0.5f}')
+print(f'{indp_sel:0.5f}')
+
+pred_sel = np.array([val if kal<=-1.6 else bal for val,bal,kal in zip(pred_cox, pred_rsf, list(val_df['ANC']))])
+ind_sel = concordance_index_censored(val_y['status'], val_y['time'], pred_sel)[0]
+indp_sel = concordance_index_ipcw(train_y, val_y, pred_sel, tau=7)[0]
+
+print('\nANC:')
+print(f'{ind_sel:0.5f}')
+print(f'{indp_sel:0.5f}')
+
+pred_sel = np.array([val if kal<=-1.7 or nal<=-1.6 else bal for val,bal,kal,nal in zip(pred_cox, pred_rsf, list(val_df['WBC']), list(val_df['ANC']))])
+
+ind_sel = concordance_index_censored(val_y['status'], val_y['time'], pred_sel)[0]
+indp_sel = concordance_index_ipcw(train_y, val_y, pred_sel, tau=7)[0]
+
+print('\nWBC and ANC:')
+print(f'{ind_sel:0.5f}')
+print(f'{indp_sel:0.5f}')
 
 
 
