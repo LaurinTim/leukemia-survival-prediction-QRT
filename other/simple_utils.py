@@ -191,6 +191,43 @@ def patient_gender(cyto_train: pd.DataFrame, cyto_test: pd.DataFrame):
     
     return res_train, res_test
 
+def molecular_transform(train_df, test_df, all_train_ids, all_test_ids):
+    gene_counts_train = train_df.groupby(["ID", "GENE"]).size().unstack(fill_value=0)
+    gene_counts_test  = test_df.groupby(["ID", "GENE"]).size().unstack(fill_value=0)
+    all_genes = sorted(set(gene_counts_train.columns) | set(gene_counts_test.columns))
+    gene_counts_train = gene_counts_train.reindex(columns=all_genes, fill_value=0)
+    gene_counts_test  = gene_counts_test.reindex(columns=all_genes, fill_value=0)
+    
+    effect_counts_train = train_df.groupby(["ID", "EFFECT"]).size().unstack(fill_value=0)
+    effect_counts_test  = test_df.groupby(["ID", "EFFECT"]).size().unstack(fill_value=0)
+    all_effects = sorted(set(effect_counts_train.columns) | set(effect_counts_test.columns))
+    effect_counts_train = effect_counts_train.reindex(columns=all_effects, fill_value=0)
+    effect_counts_test  = effect_counts_test.reindex(columns=all_effects, fill_value=0)
+    
+    agg_stats_train = train_df.groupby("ID").agg(
+        total_mutations = ("ID", "size"),
+        unique_genes    = ("GENE", "nunique"),
+        mean_VAF        = ("VAF", "mean"),
+        max_VAF         = ("VAF", "max")
+    )
+    agg_stats_test = test_df.groupby("ID").agg(
+        total_mutations = ("ID", "size"),
+        unique_genes    = ("GENE", "nunique"),
+        mean_VAF        = ("VAF", "mean"),
+        max_VAF         = ("VAF", "max")
+    )
+    
+    train_features = agg_stats_train.join(gene_counts_train, how="outer").join(effect_counts_train, how="outer")
+    test_features  = agg_stats_test.join(gene_counts_test,  how="outer").join(effect_counts_test,  how="outer")
+    
+    train_features = train_features.reindex(all_train_ids, fill_value=0)
+    test_features  = test_features.reindex(all_test_ids, fill_value=0)
+    
+    train_features = train_features.reset_index().rename(columns={"index": "ID"})
+    test_features  = test_features.reset_index().rename(columns={"index": "ID"})
+    
+    return train_features, test_features
+
 
 
 
