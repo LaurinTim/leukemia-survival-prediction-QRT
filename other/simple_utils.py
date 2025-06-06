@@ -226,6 +226,9 @@ def molecular_transform(train_df, test_df, all_train_ids, all_test_ids):
     train_features = train_features.reset_index().rename(columns={"index": "ID"})
     test_features  = test_features.reset_index().rename(columns={"index": "ID"})
     
+    train_features = train_features.fillna({'mean_VAF': 0, 'max_VAF': 0})
+    test_features = test_features.fillna({'mean_VAF': 0, 'max_VAF': 0})
+    
     return train_features, test_features
 
 
