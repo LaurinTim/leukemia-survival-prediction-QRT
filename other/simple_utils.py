@@ -169,7 +169,24 @@ def cyto_patient_risk(cyto_train: pd.DataFrame, cyto_test: pd.DataFrame):
         return res
     
     res_train = _process(cyto_train)
-    print()
+    res_test = _process(cyto_test)
+    
+    return res_train, res_test
+
+def patient_gender(cyto_train: pd.DataFrame, cyto_test: pd.DataFrame):
+    cyto_train = cyto_train.fillna('').apply(lambda x: x.strip().lower())
+    cyto_test = cyto_test.fillna('').apply(lambda x: x.strip().lower())
+    
+    def _process(df: pd.DataFrame) -> pd.DataFrame:        
+        xx_mask = list(df.str.contains('xx').astype(int))
+        xy_mask = list(df.str.contains('xy').astype(int))
+        unknown_mask = [1 if val+bal==0 else 0 for val,bal in zip(xx_mask, xy_mask)]
+                
+        res = pd.DataFrame([xx_mask, xy_mask, unknown_mask], index=['XX', 'XY', 'UNKNOWN']).T
+        
+        return res
+    
+    res_train = _process(cyto_train)
     res_test = _process(cyto_test)
     
     return res_train, res_test
