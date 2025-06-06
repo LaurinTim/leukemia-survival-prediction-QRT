@@ -231,6 +231,14 @@ def molecular_transform(train_df, test_df, all_train_ids, all_test_ids):
     
     return train_features, test_features
 
+def reduce_df(train_df, test_df, num=30):
+    nonzero_counts = (train_df != 0).sum(axis=0)
+    cols_to_keep = nonzero_counts[nonzero_counts >= num].index
+    
+    train_df_reduced = train_df.loc[:, cols_to_keep]
+    test_df_reduced = test_df.loc[:, cols_to_keep]
+    
+    return train_df_reduced, test_df_reduced
 
 
 
