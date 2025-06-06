@@ -1,6 +1,9 @@
-import re
 import pandas as pd
 import numpy as np
+from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
+from sksurv.linear_model import CoxPHSurvivalAnalysis
+from sklearn.model_selection import train_test_split
+from sksurv.ensemble import RandomSurvivalForest
 
 # Path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -36,11 +39,16 @@ molecular_df = pd.read_csv(molecular_file) # shape (10935, 11)
 
 status_df = status_df.dropna(subset=["OS_YEARS", "OS_STATUS"])
 patient_ids = list(status_df['ID'])
-clinical_df = clinical_df[[True if val in patient_ids else False for val in clinical_df['ID']]]
-molecular_df = molecular_df[[True if val in patient_ids else False for val in molecular_df['ID']]]
+clinical_df = clinical_df[[True if val in patient_ids else False for val in clinical_df['ID']]].reset_index(drop=True)
+molecular_df = molecular_df[[True if val in patient_ids else False for val in molecular_df['ID']]].reset_index(drop=True)
 
 clinical_df_test = pd.read_csv(clinical_file_test)
 molecular_df_test = pd.read_csv(molecular_file_test)
+
+all_train_ids = list(clinical_df['ID'])
+all_test_ids = list(clinical_df_test['ID'])
+
+y = np.array([(bool(val), float(bal)) for val,bal in zip(list(status_df['OS_STATUS']), list(status_df['OS_YEARS']))], dtype=[('status', bool), ('time', float)])
 
 # %%
 
@@ -55,13 +63,60 @@ gender_train, gender_test = u.patient_gender(clinical_df['CYTOGENETICS'], clinic
 clinical_df = pd.concat([clinical_df, gender_train], axis=1)
 clinical_df_test = pd.concat([clinical_df_test, gender_test], axis=1)
 
+clinical_df = clinical_df.drop(columns=['CENTER', 'CYTOGENETICS'])
+clinical_df_test = clinical_df_test.drop(columns=['CENTER', 'CYTOGENETICS'])
+
+molecular_df, molecular_df_test = u.molecular_transform(molecular_df, molecular_df_test, all_train_ids, all_test_ids)
+
 # %%
 
+data_df = pd.concat([clinical_df.drop(columns=['ADVERSE_CYTO']), molecular_df], axis=1)
+test_df = pd.concat([clinical_df_test.drop(columns=['ADVERSE_CYTO']), molecular_df_test], axis=1)
 
+#data_df = pd.concat([clinical_df, molecular_df], axis=1)
+#test_df = pd.concat([clinical_df_test, molecular_df_test], axis=1)
 
+data_df = data_df.drop(columns=['ID'])
+test_df = test_df.drop(columns=['ID'])
 
+data_df, test_df = u.reduce_df(data_df, test_df, num=10)
 
+# %%
 
+train_df, val_df, train_y, val_y = train_test_split(data_df, y, test_size=0.3, random_state=2)
+
+model = CoxPHSurvivalAnalysis(alpha=10, verbose=1)
+model.fit(train_df, train_y)
+
+pred = model.predict(val_df)
+
+ind = concordance_index_censored(val_y['status'], val_y['time'], pred)[0]
+indp = concordance_index_ipcw(train_y, val_y, pred, tau=7)[0]
+
+print(f'{ind:0.5f}')
+print(f'{indp:0.5f}')
+
+# %%
+
+train_df, val_df, train_y, val_y = train_test_split(data_df, y, test_size=0.3, random_state=2)
+
+model = RandomSurvivalForest(n_estimators=10000, max_depth=21, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0)
+model.fit(train_df, train_y)
+
+pred = model.predict(val_df)
+pred_train = model.predict(train_df)
+
+ind = concordance_index_censored(val_y['status'], val_y['time'], pred)[0]
+indp = concordance_index_ipcw(train_y, val_y, pred, tau=7)[0]
+
+ind_train = concordance_index_censored(train_y['status'], train_y['time'], pred_train)[0]
+indp_train = concordance_index_ipcw(train_y, train_y, pred_train, tau=7)[0]
+
+print(f'{ind:0.5f}')
+print(f'{indp:0.5f}')
+print()
+print(f'{ind_train:0.5f}')
+print(f'{indp_train:0.5f}')
 
 
 

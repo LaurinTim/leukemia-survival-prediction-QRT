@@ -92,8 +92,8 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_st
 a = X_df['BM_BLAST']
 b = X_sub_df['BM_BLAST']
 
-a.to_csv(f'C:\\Users\\main\\Desktop\\test files\BM_BLAST_train.csv', index=False)
-b.to_csv(f'C:\\Users\\main\\Desktop\\test files\BM_BLAST_test.csv', index=False)
+#a.to_csv(f'C:\\Users\\main\\Desktop\\test files\BM_BLAST_train.csv', index=False)
+#b.to_csv(f'C:\\Users\\main\\Desktop\\test files\BM_BLAST_test.csv', index=False)
 
 # %%
 
@@ -174,16 +174,16 @@ def hist(col, transformer=None, bins=100, zero=True, density=True):
 
 # %%
 
-column = 'PLT'
+column = 'WBC'
 
 # For BM_BLAST (not very good):
 #f = lambda x: np.log1p(x)
 # For WBC:
-#f = lambda x: np.log(x+0.05)
+f = lambda x: np.log(x+0.05)
 # For ANC:
 #f = lambda x: (x+0.1)**0.1
 # For PLT:
-f = lambda x: x**0.3
+#f = lambda x: x**0.3
 # For MONOCYTES:
 #f = lambda x: np.log((x+0.1)**0.5)
 #f = lambda x: x
@@ -192,11 +192,11 @@ hist0(column, func=f, bins=30, zero=True, density=True)
 
 # %%
 
-column = 'PLT'
+column = 'WBC'
 
 ph = PowerTransformer(method='yeo-johnson')
 
-hist(column, transformer=ph, bins=30, zero=True, density=True)
+hist(column, transformer=ph, bins=20, zero=True, density=True)
 
 # %%
 
