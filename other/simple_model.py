@@ -4,6 +4,8 @@ from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
 from sksurv.linear_model import CoxPHSurvivalAnalysis
 from sklearn.model_selection import train_test_split
 from sksurv.ensemble import RandomSurvivalForest
+from sklearn.model_selection import StratifiedKFold
+from tqdm import tqdm
 
 # Path to directory containing the project
 data_dir = "C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT"
@@ -80,6 +82,70 @@ data_df = data_df.drop(columns=['ID'])
 test_df = test_df.drop(columns=['ID'])
 
 data_df, test_df = u.reduce_df(data_df, test_df, num=10)
+
+# %%
+
+K = 5
+skf = StratifiedKFold(n_splits=K, shuffle=True, random_state=0)
+oof_rsf = np.zeros(len(y),)
+oof_cox = np.zeros(len(y),)
+
+it = 0
+
+for train_idx, val_idx in skf.split(data_df, y["status"]):
+    X_tr, y_tr = data_df.iloc[train_idx], y[train_idx]
+    X_val, y_val = data_df.iloc[val_idx], y[val_idx]
+    
+    rsf = RandomSurvivalForest(n_estimators=300, max_depth=21, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0).fit(X_tr, y_tr)
+    pred_rsf = rsf.predict(X_val)
+    oof_rsf[val_idx] = pred_rsf
+    
+    cox = CoxPHSurvivalAnalysis(alpha=10).fit(X_tr, y_tr)
+    # CoxPHSurvivalAnalysis returns risk scores where higher → higher hazard
+    pred_cox = cox.predict(X_val)
+    oof_cox[val_idx] = pred_cox
+    
+    print(f'Iteration {it}:')
+    
+    ind_rsf = concordance_index_censored(y_val['status'], y_val['time'], pred_rsf)[0]
+    indp_rsf = concordance_index_ipcw(y_tr, y_val, pred_rsf, tau=7)[0]
+    print(f'Cox CI:   {ind_rsf:0.5f}')
+    print(f'Cox IPCW: {indp_rsf:0.5f}')
+    
+    ind_cox = concordance_index_censored(y_val['status'], y_val['time'], pred_cox)[0]
+    indp_cox = concordance_index_ipcw(y_tr, y_val, pred_cox, tau=7)[0]
+    print(f'RSF CI:   {ind_cox:0.5f}')
+    print(f'RSF IPCW: {indp_cox:0.5f}')
+    
+    print()
+    
+    it += 1
+    
+print('Whole data:')
+
+ind_cox = concordance_index_censored(y['status'], y['time'], oof_cox)[0]
+indp_cox = concordance_index_ipcw(y, y, oof_cox, tau=7)[0]
+print(f'Cox CI:   {ind_cox:0.5f}')
+print(f'Cox IPCW: {indp_cox:0.5f}')
+
+ind_rsf = concordance_index_censored(y['status'], y['time'], oof_rsf)[0]
+indp_rsf = concordance_index_ipcw(y, y, oof_rsf, tau=7)[0]
+print(f'RSF CI:   {ind_rsf:0.5f}')
+print(f'RSF IPCW: {indp_rsf:0.5f}')
+    
+# %%
+    
+meta_X = pd.DataFrame({
+    "rsf_score": oof_rsf,
+    "cox_score": oof_cox
+})
+
+meta_cox = CoxPHSurvivalAnalysis(penalizer=0.1).fit(meta_X.values, y)
+
+# %%
+
+rsf_full = RandomSurvivalForest(n_estimators=300, max_depth=21, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0).fit(data_df, y)
+cox_full = CoxPHSurvivalAnalysis().fit(data_df, y)
 
 # %%
 
