@@ -81,7 +81,7 @@ test_df = pd.concat([clinical_df_test.drop(columns=['ADVERSE_CYTO']), molecular_
 data_df = data_df.drop(columns=['ID'])
 test_df = test_df.drop(columns=['ID'])
 
-data_df, test_df = u.reduce_df(data_df, test_df, num=10)
+data_df, test_df = u.reduce_df(data_df, test_df, num=100)
 
 # %%
 
@@ -92,11 +92,13 @@ oof_cox = np.zeros(len(y),)
 
 it = 0
 
+verbose = 1
+
 for train_idx, val_idx in skf.split(data_df, y["status"]):
     X_tr, y_tr = data_df.iloc[train_idx], y[train_idx]
     X_val, y_val = data_df.iloc[val_idx], y[val_idx]
     
-    rsf = RandomSurvivalForest(n_estimators=300, max_depth=21, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0).fit(X_tr, y_tr)
+    rsf = RandomSurvivalForest(n_estimators=300, max_depth=20, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0).fit(X_tr, y_tr)
     pred_rsf = rsf.predict(X_val)
     oof_rsf[val_idx] = pred_rsf
     
@@ -105,33 +107,35 @@ for train_idx, val_idx in skf.split(data_df, y["status"]):
     pred_cox = cox.predict(X_val)
     oof_cox[val_idx] = pred_cox
     
-    print(f'Iteration {it}:')
-    
-    ind_rsf = concordance_index_censored(y_val['status'], y_val['time'], pred_rsf)[0]
-    indp_rsf = concordance_index_ipcw(y_tr, y_val, pred_rsf, tau=7)[0]
-    print(f'Cox CI:   {ind_rsf:0.5f}')
-    print(f'Cox IPCW: {indp_rsf:0.5f}')
-    
-    ind_cox = concordance_index_censored(y_val['status'], y_val['time'], pred_cox)[0]
-    indp_cox = concordance_index_ipcw(y_tr, y_val, pred_cox, tau=7)[0]
-    print(f'RSF CI:   {ind_cox:0.5f}')
-    print(f'RSF IPCW: {indp_cox:0.5f}')
-    
-    print()
+    if verbose==2:
+        print(f'Iteration {it}:')
+        
+        ind_rsf = concordance_index_censored(y_val['status'], y_val['time'], pred_rsf)[0]
+        indp_rsf = concordance_index_ipcw(y_tr, y_val, pred_rsf, tau=7)[0]
+        print(f'Cox CI:   {ind_rsf:0.5f}')
+        print(f'Cox IPCW: {indp_rsf:0.5f}')
+        
+        ind_cox = concordance_index_censored(y_val['status'], y_val['time'], pred_cox)[0]
+        indp_cox = concordance_index_ipcw(y_tr, y_val, pred_cox, tau=7)[0]
+        print(f'RSF CI:   {ind_cox:0.5f}')
+        print(f'RSF IPCW: {indp_cox:0.5f}')
+        
+        print()
     
     it += 1
+
+if verbose>=1:
+    print('Whole data:')
     
-print('Whole data:')
-
-ind_cox = concordance_index_censored(y['status'], y['time'], oof_cox)[0]
-indp_cox = concordance_index_ipcw(y, y, oof_cox, tau=7)[0]
-print(f'Cox CI:   {ind_cox:0.5f}')
-print(f'Cox IPCW: {indp_cox:0.5f}')
-
-ind_rsf = concordance_index_censored(y['status'], y['time'], oof_rsf)[0]
-indp_rsf = concordance_index_ipcw(y, y, oof_rsf, tau=7)[0]
-print(f'RSF CI:   {ind_rsf:0.5f}')
-print(f'RSF IPCW: {indp_rsf:0.5f}')
+    ind_rsf = concordance_index_censored(y['status'], y['time'], oof_rsf)[0]
+    indp_rsf = concordance_index_ipcw(y, y, oof_rsf, tau=7)[0]
+    print(f'RSF CI:   {ind_rsf:0.5f}')
+    print(f'RSF IPCW: {indp_rsf:0.5f}')
+    
+    ind_cox = concordance_index_censored(y['status'], y['time'], oof_cox)[0]
+    indp_cox = concordance_index_ipcw(y, y, oof_cox, tau=7)[0]
+    print(f'Cox CI:   {ind_cox:0.5f}')
+    print(f'Cox IPCW: {indp_cox:0.5f}')
     
 # %%
     
@@ -140,12 +144,35 @@ meta_X = pd.DataFrame({
     "cox_score": oof_cox
 })
 
-meta_cox = CoxPHSurvivalAnalysis(penalizer=0.1).fit(meta_X.values, y)
+meta_cox = CoxPHSurvivalAnalysis().fit(meta_X, y)
+
+if verbose>=1:
+    pred_meta = meta_cox.predict(meta_X)
+    
+    print('Stacked prediction:')
+    
+    ind_stack = concordance_index_censored(y['status'], y['time'], pred_meta)[0]
+    indp_stack = concordance_index_ipcw(y, y, pred_meta, tau=7)[0]
+    print(f'Stacked CI:   {ind_stack:0.5f}')
+    print(f'Stacked IPCW: {indp_stack:0.5f}')
 
 # %%
 
 rsf_full = RandomSurvivalForest(n_estimators=300, max_depth=21, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0).fit(data_df, y)
-cox_full = CoxPHSurvivalAnalysis().fit(data_df, y)
+cox_full = CoxPHSurvivalAnalysis(alpha=10).fit(data_df, y)
+
+test_rsf = rsf_full.predict(test_df)
+test_cox = cox_full.predict(test_df)
+
+meta_X_test = pd.DataFrame({
+    "rsf_score": test_rsf,
+    "cox_score": test_cox
+})
+
+final_risk = meta_cox.predict(meta_X_test)
+
+submission_df = pd.DataFrame({'ID': all_test_ids, 'risk_score': final_risk})
+#submission_df.to_csv(data_dir + "\\submission_files\\stack0.csv", index=False)
 
 # %%
 
