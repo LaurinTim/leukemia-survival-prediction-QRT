@@ -102,7 +102,7 @@ for train_idx, val_idx in skf.split(data_df, y["status"]):
     pred_rsf = rsf.predict(X_val)
     oof_rsf[val_idx] = pred_rsf
     
-    cox = CoxPHSurvivalAnalysis(alpha=10).fit(X_tr, y_tr)
+    cox = CoxPHSurvivalAnalysis(alpha=100).fit(X_tr, y_tr)
     # CoxPHSurvivalAnalysis returns risk scores where higher → higher hazard
     pred_cox = cox.predict(X_val)
     oof_cox[val_idx] = pred_cox
@@ -138,6 +138,9 @@ if verbose>=1:
     print(f'Cox IPCW: {indp_cox:0.5f}')
     
 # %%
+
+#oof_rsf = np.array([(val-min(oof_rsf))/(max(oof_rsf)-min(oof_rsf)) for val in oof_rsf])
+#oof_cox = np.array([(val-min(oof_cox))/(max(oof_cox)-min(oof_cox)) for val in oof_cox])
     
 meta_X = pd.DataFrame({
     "rsf_score": oof_rsf,
@@ -159,7 +162,7 @@ if verbose>=1:
 # %%
 
 rsf_full = RandomSurvivalForest(n_estimators=300, max_depth=21, min_samples_split=6, min_samples_leaf=3, n_jobs=-1, random_state=0).fit(data_df, y)
-cox_full = CoxPHSurvivalAnalysis(alpha=10).fit(data_df, y)
+cox_full = CoxPHSurvivalAnalysis(alpha=100).fit(data_df, y)
 
 test_rsf = rsf_full.predict(test_df)
 test_cox = cox_full.predict(test_df)
@@ -172,7 +175,7 @@ meta_X_test = pd.DataFrame({
 final_risk = meta_cox.predict(meta_X_test)
 
 submission_df = pd.DataFrame({'ID': all_test_ids, 'risk_score': final_risk})
-#submission_df.to_csv(data_dir + "\\submission_files\\stack0.csv", index=False)
+submission_df.to_csv(data_dir + "\\submission_files\\stack0.csv", index=False)
 
 # %%
 
