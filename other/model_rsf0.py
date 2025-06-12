@@ -80,7 +80,7 @@ y = np.array([(bool(val[0]), float(val[1])) for val in y], dtype=[('status', boo
 # %%
 
 def sets(X, y, validation_file='Validation_IDs.csv', complete_train=False):
-    val_ids = pd.read_csv(data_dir + '\\' + validation_file)
+    val_ids = pd.read_csv(data_dir + '\\val_ids\\' + validation_file)
     
     if complete_train:
         X_train = X
@@ -260,7 +260,7 @@ X_sub = np.array(X_sub_df1)
 # Generate predictions for submission
 pt_sub = clf.predict(X_sub)
 submission_df = pd.DataFrame([patient_ids_sub, pt_sub], index=["ID", "risk_score"]).T
-submission_df.to_csv(data_dir + "\\submission_files\\rsff1.csv", index=False)
+#submission_df.to_csv(data_dir + "\\submission_files\\rsff1.csv", index=False)
 
 # %%
 
@@ -332,7 +332,6 @@ params = {
     "max_leaves": 3,
     "max_bin": 9,
     "gamma": 0.2,
-    "random_state": 0
 }
 '''
 params = {
@@ -376,15 +375,15 @@ pred_log_time = bst.predict(dval)
 # If you want actual time estimates, take exp():
 pred_time = np.exp(pred_log_time)
 
-print(concordance_index_ipcw(yt, yv, pred_time))
-print(concordance_index_ipcw(yt, yv, 1/pred_time))
+print(concordance_index_ipcw(yt, yv, pred_time)[0])
+print(concordance_index_ipcw(yt, yv, 1/pred_time)[0])
 
 pred_log_timet = bst.predict(dtrain)
 pred_timet = np.exp(pred_log_timet)
 
 print()
-print(concordance_index_ipcw(yt, yt, pred_timet))
-print(concordance_index_ipcw(yt, yt, 1/pred_timet))
+print(concordance_index_ipcw(yt, yt, pred_timet)[0])
+print(concordance_index_ipcw(yt, yt, 1/pred_timet)[0])
 
 # %%
 
