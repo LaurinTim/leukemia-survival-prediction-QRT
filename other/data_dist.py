@@ -174,18 +174,18 @@ def hist(col, transformer=None, bins=100, zero=True, density=True):
 
 # %%
 
-column = 'WBC'
+column = 'MONOCYTES'
 
 # For BM_BLAST (not very good):
 #f = lambda x: np.log1p(x)
 # For WBC:
-f = lambda x: np.log(x+0.05)
+#f = lambda x: np.log(x+0.05)
 # For ANC:
 #f = lambda x: (x+0.1)**0.1
 # For PLT:
 #f = lambda x: x**0.3
 # For MONOCYTES:
-#f = lambda x: np.log((x+0.1)**0.5)
+f = lambda x: np.log((x+0.1)**0.5)
 #f = lambda x: x
 
 hist0(column, func=f, bins=30, zero=True, density=True)
