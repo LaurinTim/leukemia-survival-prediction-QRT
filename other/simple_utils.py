@@ -9,6 +9,14 @@ def set_random_seed(random_seed) -> None:
     np.random.seed(random_seed)
     random.seed(random_seed)
     
+def remove_low_censoring(status_df, censoring_time):
+    #censored_df = status_df[[True if val==1 else False for val in list(status_df['OS_STATUS'])]]
+    #remove_df = censored_df[[True if val<=censoring_time else False for val in list(censored_df['OS_YEARS'])]]
+    #remove_ids = list(remove_df)
+    return_df = status_df[[False if val==1 and bal<=censoring_time else True for val,bal in zip(status_df['OS_STATUS'], status_df['OS_YEARS'])]]
+    
+    return return_df
+    
 def fill_nan(train_df: pd.DataFrame, test_df: pd.DataFrame, columns: list, method: str = 'zeros'):
     '''
     Fill nan values of train and test df. For median and mean, the nan values 
