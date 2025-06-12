@@ -40,6 +40,7 @@ clinical_df = pd.read_csv(clinical_file) # shape (3323, 9)
 molecular_df = pd.read_csv(molecular_file) # shape (10935, 11)
 
 status_df = status_df.dropna(subset=["OS_YEARS", "OS_STATUS"])
+status_df = u.remove_low_censoring(status_df, 0.0)
 patient_ids = list(status_df['ID'])
 clinical_df = clinical_df[[True if val in patient_ids else False for val in clinical_df['ID']]].reset_index(drop=True)
 molecular_df = molecular_df[[True if val in patient_ids else False for val in molecular_df['ID']]].reset_index(drop=True)
@@ -143,8 +144,8 @@ if verbose>=1:
 #oof_cox = np.array([(val-min(oof_cox))/(max(oof_cox)-min(oof_cox)) for val in oof_cox])
     
 meta_X = pd.DataFrame({
-    "rsf_score": oof_rsf,
-    "cox_score": oof_cox
+    "cox_score": oof_cox,
+    "rsf_score": oof_rsf
 })
 
 meta_cox = CoxPHSurvivalAnalysis().fit(meta_X, y)
@@ -158,6 +159,11 @@ if verbose>=1:
     indp_stack = concordance_index_ipcw(y, y, pred_meta, tau=7)[0]
     print(f'Stacked CI:   {ind_stack:0.5f}')
     print(f'Stacked IPCW: {indp_stack:0.5f}')
+    print()
+    print(f'Cox coefficient: {meta_cox.coef_[0]:0.5f}')
+    print(f'RSF coefficient: {meta_cox.coef_[1]:0.5f}')
+    print(f'Scaled Cox coefficient: {meta_cox.coef_[0]*(max(oof_cox)-min(oof_cox)):0.3f}')
+    print(f'Scaled RSF coefficient: {meta_cox.coef_[1]*(max(oof_rsf)-min(oof_rsf)):0.3f}')
 
 # %%
 
@@ -175,7 +181,7 @@ meta_X_test = pd.DataFrame({
 final_risk = meta_cox.predict(meta_X_test)
 
 submission_df = pd.DataFrame({'ID': all_test_ids, 'risk_score': final_risk})
-submission_df.to_csv(data_dir + "\\submission_files\\stack0.csv", index=False)
+#submission_df.to_csv(data_dir + "\\submission_files\\stack0.csv", index=False)
 
 # %%
 
@@ -256,8 +262,51 @@ print('\nWBC and ANC:')
 print(f'{ind_sel:0.5f}')
 print(f'{indp_sel:0.5f}')
 
+# %%
 
+SEED = 0
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
 
+def oof_score(model_ctor, X, y, **fit_kwargs):
+    """
+    Fit the model on each CV fold, collect out-of-fold predictions,
+    then compute the IPCW C-index at tau=7 years on those predictions.
+    """
+    oof_pred = np.zeros(len(y))
+    for tr, val in cv.split(X, y["status"]):
+        X_tr, X_val = X.iloc[tr], X.iloc[val]
+        y_tr, y_val = y[tr], y[val]
+        
+        if str(model_ctor)=='<class \'sksurv.linear_model.coxph.CoxPHSurvivalAnalysis\'>':
+            model = model_ctor(**fit_kwargs).fit(X_tr, y_tr)
+        else:
+            model = model_ctor(random_state=SEED, **fit_kwargs).fit(X_tr, y_tr)
+        oof_pred[val] = model.predict(X_val)
+
+    # Concordance of the pooled out-of-fold predictions
+    c_ipcw = concordance_index_ipcw(y, y, oof_pred, tau=7)[0]
+    return c_ipcw, oof_pred
+
+# %%
+
+# Baseline RSF
+rsf_c, rsf_pred = oof_score(
+    RandomSurvivalForest,
+    X=data_df, y=y,
+    n_estimators=300,
+    max_depth=20,
+    min_samples_split=6,
+    min_samples_leaf=3,
+    n_jobs=-1
+)
+
+cox_c, cox_pred = oof_score(CoxPHSurvivalAnalysis, X=data_df, y=y, alpha=100, ties='breslow')
+
+# %%
+
+print(rsf_c, cox_c)
+
+# %%
 
 
 
