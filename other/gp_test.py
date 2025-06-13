@@ -1,7 +1,7 @@
 import numpy as np, pandas as pd
 from sklearn.model_selection import StratifiedKFold
 from sksurv.ensemble import RandomSurvivalForest
-from sksurv.metrics import concordance_index_ipcw
+from sksurv.metrics import concordance_index_ipcw, concordance_index_censored
 
 import os
 os.chdir("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT")
@@ -38,7 +38,7 @@ cyto_flag,_ = u.cyto_patient_risk(clinical.CYTOGENETICS, clinical.CYTOGENETICS)
 sex_flag, _ = u.patient_gender(clinical.CYTOGENETICS, clinical.CYTOGENETICS)
 
 clinical    = pd.concat([clinical, cyto_flag, sex_flag], axis=1)\
-                 .drop(columns=['CENTER','CYTOGENETICS','ADVERSE_CYTO'])
+                 .drop(columns=['CENTER','CYTOGENETICS'])
 
 mol_features,_ = u.molecular_transform(
     molecular, molecular,             # test df is irrelevant here
@@ -54,8 +54,8 @@ print("Positions where mol_features.ID ≠ status.ID :", mis_order_molecular) # 
 X           = pd.concat([clinical.drop(columns=['ID']), mol_features.drop(columns=['ID'])], axis=1)
 X, _        = u.reduce_df(X, X, num=100)   # leaves ~40 columns
 
-nan_ids_feature = [1 if val in nan_ids else 0 for val in ids]
-X.insert(40, 'MISSING_OUTCOME', nan_ids_feature)
+#nan_ids_feature = [1 if val in nan_ids else 0 for val in ids]
+#X.insert(40, 'MISSING_OUTCOME', nan_ids_feature)
 
 # ---- structured outcome array
 y = np.array([(bool(ev),  float(t)) for ev,t in zip(status.OS_STATUS, status.OS_YEARS)],
@@ -72,11 +72,11 @@ cv   = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
 oof_pred = np.zeros(len(y))
 for tr, val in cv.split(X, y["status"]):
     rsf = RandomSurvivalForest(
-        n_estimators      = 300,
+        n_estimators      = 200,
         max_depth         = 20,
         min_samples_split = 6,
         min_samples_leaf  = 3,
-        max_features      = 0.15,
+        max_features      = 'sqrt',
         n_jobs            = -1,
         random_state      = 0
     ).fit(X.iloc[tr], y[tr])
@@ -84,6 +84,8 @@ for tr, val in cv.split(X, y["status"]):
 
 c_ipcw = concordance_index_ipcw(y, y, oof_pred, tau=7)[0]
 print(f"Baseline RSF 5-fold IPCW C-index = {c_ipcw:.4f}")
+#c_ind = concordance_index_censored(y['status'], y['time'], oof_pred)[0]
+#print(f'{c_ind:0.5f}')
 
 # %%
 
@@ -97,6 +99,29 @@ for tr, val in cv.split(X, y["status"]):
         max_depth         = None,
         min_samples_split = 10,
         min_samples_leaf  = 10,
+        max_features      = "sqrt",
+        n_jobs            = -1,
+        random_state      = 0
+    ).fit(X.iloc[tr], y[tr])
+    oof_pred[val] = rsf.predict(X.iloc[val])
+
+c_ipcw = concordance_index_ipcw(y, y, oof_pred, tau=7)[0]
+print(f"Tuned RSF 5-fold IPCW C-index = {c_ipcw:.4f}")
+#c_ind = concordance_index_censored(y['status'], y['time'], oof_pred)[0]
+#print(f'{c_ind:0.5f}')
+
+# %%
+
+SEED = 0
+cv   = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
+
+oof_pred = np.zeros(len(y))
+for tr, val in cv.split(X, y["status"]):
+    rsf = RandomSurvivalForest(
+       n_estimators      = 200,
+        max_depth         = 12,
+        min_samples_split = 10,
+        min_samples_leaf  = 8,
         max_features      = "sqrt",
         n_jobs            = -1,
         random_state      = 0
