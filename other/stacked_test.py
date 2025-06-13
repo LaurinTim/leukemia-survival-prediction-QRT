@@ -74,6 +74,7 @@ X = pd.concat(
         axis=1)
 
 X, _ = u.reduce_df(X, X, num=100)          # ~40 columns
+X = X.set_index(ids_master)
 
 # ---------- structured outcome array ----------
 y = np.array([(bool(ev), float(t)) for ev,t in
@@ -100,9 +101,9 @@ for tr, val in cv.split(X, y["status"]):
 
     rsf = RandomSurvivalForest(
             n_estimators      = 300,
-            max_depth         = 20,
-            min_samples_split = 6,
-            min_samples_leaf  = 10,
+            max_depth         = 12,
+            min_samples_split = 10,
+            min_samples_leaf  = 8,
             max_features      = "sqrt",
             n_jobs            = -1,
             random_state      = SEED
@@ -132,6 +133,27 @@ def c_ipcw(pred):
 print("\n=== 5-fold pooled IPCW C-indices (τ = 7 yr) ===")
 print(f"RSF  : {c_ipcw(oof_rsf):.4f}")
 print(f"Cox  : {c_ipcw(oof_cox):.4f}")
+print(f"GBSA : {c_ipcw(oof_gbsa):.4f}")
+
+# %%
+
+cv = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+
+oof_gbsa = np.zeros(len(y))
+
+for tr, val in cv.split(X, y["status"]):
+    X_tr, X_val = X.iloc[tr], X.iloc[val]
+    y_tr, y_val = y[tr], y[val]
+
+    gbsa = GradientBoostingSurvivalAnalysis(
+            learning_rate = 0.05,
+            n_estimators  = 200,
+            max_depth     = 3,
+            random_state  = SEED
+    ).fit(X_tr, y_tr)
+
+    oof_gbsa[val] = gbsa.predict(X_val)
+    
 print(f"GBSA : {c_ipcw(oof_gbsa):.4f}")
 
 # %%
@@ -170,6 +192,56 @@ full_meta = CoxPHSurvivalAnalysis().fit(
 )
 
 print("Stacked model ready.  Use `full_meta.predict(base_pred_df)` on new patients.")
+
+# %%
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+oof_rsf  = np.zeros(len(y))
+oof_cox  = np.zeros(len(y))
+oof_gbsa = np.zeros(len(y))
+
+for tr,val in cv.split(X, y["status"]):
+    X_tr, y_tr = X.iloc[tr], y[tr]
+    X_val      = X.iloc[val]
+
+    rsf  = RandomSurvivalForest(n_estimators=300, max_depth=20,
+                                min_samples_leaf=10, max_features="sqrt",
+                                n_jobs=-1, random_state=0).fit(X_tr, y_tr)
+    cox  = CoxPHSurvivalAnalysis(alpha=100).fit(X_tr, y_tr)
+    gbsa = GradientBoostingSurvivalAnalysis(learning_rate=0.05,
+                                            n_estimators=200,
+                                            max_depth=3,
+                                            random_state=0).fit(X_tr, y_tr)
+
+    oof_rsf [val] = rsf .predict(X_val)
+    oof_cox [val] = cox .predict(X_val)
+    oof_gbsa[val] = gbsa.predict(X_val)
+
+# --- normalise columns ---
+def mm(x): return (x - x.min()) / (x.max() - x.min() + 1e-9)
+meta_X = pd.DataFrame({"rsf": mm(oof_rsf), "cox": mm(oof_cox), "gbsa": mm(oof_gbsa)})
+
+meta_cox  = CoxPHSurvivalAnalysis(alpha=0.1).fit(meta_X, y)
+oof_stack = meta_cox.predict(meta_X)
+
+def c(pred): return concordance_index_ipcw(y, y, pred, tau=7)[0]
+print("RSF   :", c(oof_rsf))
+print("Cox   :", c(oof_cox))
+print("GBSA  :", c(oof_gbsa))
+print("STACK :", c(oof_stack))
+
+# %%
+
+import hashlib, numpy as np
+
+# md5 of the ID column
+ids_hash = hashlib.md5(",".join(X.index.astype(str)).encode()).hexdigest()
+print("ID-order hash:", ids_hash)
+print("first 10 IDs :", list(X.index[:10]))
+
+# %%
+
+
 
 
 
