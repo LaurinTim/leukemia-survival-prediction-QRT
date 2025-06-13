@@ -14,6 +14,7 @@ from sksurv.metrics import concordance_index_ipcw
 
 import os
 os.chdir("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT")
+os.environ["OMP_NUM_THREADS"] = "1"
 
 import other.simple_utils as u   # <-- the helper file you uploaded
 
@@ -35,7 +36,10 @@ missing_mask = status["OS_YEARS"].isna() | status["OS_STATUS"].isna()
 status.loc[missing_mask, "OS_YEARS"]  = 0.0   # censored at t = 0
 status.loc[missing_mask, "OS_STATUS"] = 0.0
 
-ids_master = status.ID            # 3 323 rows, master order
+ids_master = list(status.ID)            # 3 323 rows, master order
+
+status   = status  .set_index("ID").loc[ids_master].reset_index()
+clinical  = clinical .set_index("ID").loc[ids_master].reset_index()
 
 # %%
 
@@ -59,7 +63,7 @@ cyto_flag,_ = u.cyto_patient_risk(clinical.CYTOGENETICS, clinical.CYTOGENETICS)
 sex_flag,_  = u.patient_gender   (clinical.CYTOGENETICS, clinical.CYTOGENETICS)
 
 clinical = pd.concat([clinical, cyto_flag, sex_flag], axis=1)\
-           .drop(columns=["CENTER","CYTOGENETICS","ADVERSE_CYTO"])
+           .drop(columns=["CENTER","CYTOGENETICS"])
 
 # ---------- molecular aggregation ----------
 mol_feat,_ = u.molecular_transform(
@@ -67,9 +71,22 @@ mol_feat,_ = u.molecular_transform(
     list(ids_master), list(ids_master)      # keep same order
 )
 
+mol_feat = mol_feat.set_index("ID").loc[ids_master].reset_index()
+
+# -- after loading & cleaning status, clinical, molecular ------------------
+ids_master = status.ID            # 3 323 IDs in the *desired* order
+
+# Re-index clinical and molecular to match that order (NO reset_index before!)
+clinical  = clinical.set_index("ID").loc[ids_master].reset_index()
+mol_feat = mol_feat.set_index("ID").loc[ids_master].reset_index()
+
+# sanity: all three must now be identical
+assert (clinical.ID.values  == ids_master.values).all()
+assert (mol_feat.ID.values == ids_master.values).all()
+
 # ---------- merge & reduce ----------
 X = pd.concat(
-        [clinical.drop(columns=["ID"]),
+        [clinical.drop(columns=["ID", "ADVERSE_CYTO"]),
          mol_feat.drop(columns=["ID"])],
         axis=1)
 
@@ -98,7 +115,7 @@ oof_gbsa = np.zeros(len(y))
 for tr, val in cv.split(X, y["status"]):
     X_tr, X_val = X.iloc[tr], X.iloc[val]
     y_tr, y_val = y[tr], y[val]
-
+    
     rsf = RandomSurvivalForest(
             n_estimators      = 300,
             max_depth         = 12,
@@ -108,7 +125,17 @@ for tr, val in cv.split(X, y["status"]):
             n_jobs            = -1,
             random_state      = SEED
     ).fit(X_tr, y_tr)
-
+    '''
+    rsf = RandomSurvivalForest(
+            n_estimators      = 300,
+            max_depth         = 20,
+            min_samples_split = 6,
+            min_samples_leaf  = 10,
+            max_features      = "sqrt",
+            n_jobs            = -1,
+            random_state      = SEED
+    ).fit(X_tr, y_tr)
+    '''
     cox = CoxPHSurvivalAnalysis(alpha=100).fit(X_tr, y_tr)
 
     gbsa = GradientBoostingSurvivalAnalysis(
@@ -161,12 +188,18 @@ print(f"GBSA : {c_ipcw(oof_gbsa):.4f}")
 # ------------------------------------------------------------------
 # 5. Stack with a meta-Cox on the three OOF columns
 # ------------------------------------------------------------------
+def mm(x): return (x - x.min()) / (x.max() - x.min() + 1e-9)
+
+oof_rsf = mm(oof_rsf)
+oof_cox = mm(oof_cox)
+oof_gbsa = mm(oof_gbsa)
+
 meta_X = pd.DataFrame({
     "rsf" : oof_rsf,
     "cox" : oof_cox,
     "gbsa": oof_gbsa
 })
-meta_cox = CoxPHSurvivalAnalysis().fit(meta_X, y)
+meta_cox = CoxPHSurvivalAnalysis(alpha=0.1).fit(meta_X, y)
 oof_stack = meta_cox.predict(meta_X)
 
 print("----------------------------------------------")
@@ -192,56 +225,6 @@ full_meta = CoxPHSurvivalAnalysis().fit(
 )
 
 print("Stacked model ready.  Use `full_meta.predict(base_pred_df)` on new patients.")
-
-# %%
-
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
-oof_rsf  = np.zeros(len(y))
-oof_cox  = np.zeros(len(y))
-oof_gbsa = np.zeros(len(y))
-
-for tr,val in cv.split(X, y["status"]):
-    X_tr, y_tr = X.iloc[tr], y[tr]
-    X_val      = X.iloc[val]
-
-    rsf  = RandomSurvivalForest(n_estimators=300, max_depth=20,
-                                min_samples_leaf=10, max_features="sqrt",
-                                n_jobs=-1, random_state=0).fit(X_tr, y_tr)
-    cox  = CoxPHSurvivalAnalysis(alpha=100).fit(X_tr, y_tr)
-    gbsa = GradientBoostingSurvivalAnalysis(learning_rate=0.05,
-                                            n_estimators=200,
-                                            max_depth=3,
-                                            random_state=0).fit(X_tr, y_tr)
-
-    oof_rsf [val] = rsf .predict(X_val)
-    oof_cox [val] = cox .predict(X_val)
-    oof_gbsa[val] = gbsa.predict(X_val)
-
-# --- normalise columns ---
-def mm(x): return (x - x.min()) / (x.max() - x.min() + 1e-9)
-meta_X = pd.DataFrame({"rsf": mm(oof_rsf), "cox": mm(oof_cox), "gbsa": mm(oof_gbsa)})
-
-meta_cox  = CoxPHSurvivalAnalysis(alpha=0.1).fit(meta_X, y)
-oof_stack = meta_cox.predict(meta_X)
-
-def c(pred): return concordance_index_ipcw(y, y, pred, tau=7)[0]
-print("RSF   :", c(oof_rsf))
-print("Cox   :", c(oof_cox))
-print("GBSA  :", c(oof_gbsa))
-print("STACK :", c(oof_stack))
-
-# %%
-
-import hashlib, numpy as np
-
-# md5 of the ID column
-ids_hash = hashlib.md5(",".join(X.index.astype(str)).encode()).hexdigest()
-print("ID-order hash:", ids_hash)
-print("first 10 IDs :", list(X.index[:10]))
-
-# %%
-
-
 
 
 
