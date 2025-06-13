@@ -45,6 +45,11 @@ mol_features,_ = u.molecular_transform(
     list(clinical.ID), list(clinical.ID)
 )
 
+mis_order_clinical = (clinical.ID.values != status.ID.values).sum()
+mis_order_molecular = (mol_features.ID.values != status.ID.values).sum()
+print("Positions where clinical.ID ≠ status.ID :", mis_order_clinical) # prints 0
+print("Positions where mol_features.ID ≠ status.ID :", mis_order_molecular) # prints 0
+
 # ---- combine and keep columns that appear ≥100× in training
 X           = pd.concat([clinical.drop(columns=['ID']), mol_features.drop(columns=['ID'])], axis=1)
 X, _        = u.reduce_df(X, X, num=100)   # leaves ~40 columns
