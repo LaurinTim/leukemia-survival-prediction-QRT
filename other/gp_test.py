@@ -14,10 +14,12 @@ status      = pd.read_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My file
 clinical    = pd.read_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\X_train\\clinical_train.csv")
 molecular   = pd.read_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\X_train\\molecular_train.csv")
 
+nan_ids = [val for val in list(status['ID']) if not val in list(status.dropna(subset=['OS_YEARS', 'OS_STATUS'])['ID'])]
+
 status = status.fillna(0)
 # --- keep only patients that have OS information
 status      = status.dropna(subset=["OS_YEARS", "OS_STATUS"])
-ids         = set(status.ID)
+ids         = list(status.ID)
 
 clinical    = clinical[clinical.ID.isin(ids)].reset_index(drop=True)
 molecular   = molecular[molecular.ID.isin(ids)].reset_index(drop=True)
@@ -46,6 +48,9 @@ mol_features,_ = u.molecular_transform(
 # ---- combine and keep columns that appear ≥100× in training
 X           = pd.concat([clinical.drop(columns=['ID']), mol_features.drop(columns=['ID'])], axis=1)
 X, _        = u.reduce_df(X, X, num=100)   # leaves ~40 columns
+
+nan_ids_feature = [1 if val in nan_ids else 0 for val in ids]
+X.insert(40, 'MISSING_OUTCOME', nan_ids_feature)
 
 # ---- structured outcome array
 y = np.array([(bool(ev),  float(t)) for ev,t in zip(status.OS_STATUS, status.OS_YEARS)],
