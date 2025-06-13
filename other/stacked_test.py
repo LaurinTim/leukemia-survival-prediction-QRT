@@ -12,7 +12,10 @@ from sksurv.ensemble import (
 from sksurv.linear_model import CoxPHSurvivalAnalysis
 from sksurv.metrics import concordance_index_ipcw
 
-import simple_utils as u   # <-- the helper file you uploaded
+import os
+os.chdir("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT")
+
+import other.simple_utils as u   # <-- the helper file you uploaded
 
 SEED = 0
 N_FOLDS = 5
@@ -28,12 +31,9 @@ clinical    = pd.read_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My file
 molecular   = pd.read_csv("C:\\Users\\main\\Proton Drive\\laurin.koller\\My files\\ML\\leukemia-survival-prediction-QRT\\X_train\\molecular_train.csv")
 
 # -- fill blank outcomes with 0-year, censored
-blank = status["OS_YEARS"].str.strip().eq("") | status["OS_STATUS"].str.strip().eq("")
-status.loc[blank, ["OS_YEARS","OS_STATUS"]] = ["0","0"]
-
-# numeric conversion
-status["OS_YEARS"]  = status["OS_YEARS"].astype(float)
-status["OS_STATUS"] = status["OS_STATUS"].astype(float)
+missing_mask = status["OS_YEARS"].isna() | status["OS_STATUS"].isna()
+status.loc[missing_mask, "OS_YEARS"]  = 0.0   # censored at t = 0
+status.loc[missing_mask, "OS_STATUS"] = 0.0
 
 ids_master = status.ID            # 3 323 rows, master order
 
